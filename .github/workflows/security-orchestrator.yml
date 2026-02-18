@@ -36,7 +36,7 @@ jobs:
 
   gosec:
     name: Gosec – SAST Scan
-    uses: Faslanrizni/security-guardrails-faslan/.github/workflows/gosec-scan.yml@main
+    uses: Faslanrizni/security-guardrails-faslan/.github/workflows/gosec-scan.yml@testing
     with:
       fail-on-findings: true
     permissions:
