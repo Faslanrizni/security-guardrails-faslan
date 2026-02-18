@@ -1,0 +1,6 @@
+iac:
+  block_on:
+    - public_s3_bucket
+    - open_security_group
+    - wildcard_iam
+    - unencrypted_volume

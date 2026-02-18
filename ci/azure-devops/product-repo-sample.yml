@@ -1,0 +1,11 @@
+resources:
+  repositories:
+    - repository: security-guardrails
+      type: git
+      name: platform/security-guardrails
+
+extends:
+  template: ci/azure-devops/security-orchestrator.yml@security-guardrails
+  parameters:
+    branch: $(Build.SourceBranchName)
+    repoName: $(Build.Repository.Name)

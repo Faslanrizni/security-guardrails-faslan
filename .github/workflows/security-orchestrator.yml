@@ -1,0 +1,23 @@
+name: Security Guardrails
+
+on:
+  workflow_call:
+    inputs:
+      image-ref:
+        required: false
+        type: string
+        default: ""
+    secrets:
+      FOSSA_API_KEY:
+        required: false
+
+jobs:
+  trivy-image:
+    name: Trivy – Docker Image Scan
+    if: ${{ inputs.image-ref != '' }}
+    uses: Faslanrizni/security-guardrails/.github/workflows/trivy-scan.yml@main
+    with:
+      scan-type: image
+      image-ref: ${{ inputs.image-ref }}
+      severity: HIGH,CRITICAL
+      fail-on-findings: true

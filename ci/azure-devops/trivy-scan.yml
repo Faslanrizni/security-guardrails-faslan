@@ -1,0 +1,97 @@
+parameters:
+  - name: branch
+    type: string
+  - name: repoName
+    type: string
+  - name: scanType
+    type: string
+    default: fs                   # fs | image
+  - name: imageRef
+    type: string
+    default: ""                   # only used when scanType=image
+  - name: severity
+    type: string
+    default: HIGH,CRITICAL        # matches policies/dependencies.yaml block_on: cve_severity: HIGH
+  - name: failOnFindings
+    type: boolean
+    default: true
+
+steps:
+  - script: |
+      echo "Installing Trivy..."
+      sudo apt-get install -y wget apt-transport-https gnupg lsb-release
+      wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key \
+        | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+      echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] \
+        https://aquasecurity.github.io/trivy-repo/deb \
+        $(lsb_release -sc) main" \
+        | sudo tee /etc/apt/sources.list.d/trivy.list
+      sudo apt-get update -qq
+      sudo apt-get install -y trivy
+      trivy --version
+    displayName: "Install Trivy"
+
+  # ── Filesystem scan (source + go.mod, no Docker needed) ──────────────────
+  - script: |
+      echo "Running Trivy filesystem scan on repo: ${{ parameters.repoName }} branch: ${{ parameters.branch }}"
+
+      EXIT_CODE=0
+      ${{ parameters.failOnFindings }} && EXIT_CODE=1 || EXIT_CODE=0
+
+      trivy fs . \
+        --scanners vuln,secret,misconfig \
+        --severity ${{ parameters.severity }} \
+        --exit-code $EXIT_CODE \
+        --ignore-unfixed \
+        --format sarif \
+        --output trivy-fs-results.sarif \
+        --timeout 10m
+
+      # Human-readable summary in pipeline logs
+      trivy fs . \
+        --scanners vuln,secret,misconfig \
+        --severity ${{ parameters.severity }} \
+        --exit-code 0 \
+        --ignore-unfixed \
+        --format table \
+        --timeout 10m
+    displayName: "Trivy – Filesystem Scan"
+    condition: eq('${{ parameters.scanType }}', 'fs')
+
+  # ── Docker image scan (built container layers) ────────────────────────────
+  - script: |
+      echo "Running Trivy image scan on: ${{ parameters.imageRef }}"
+
+      EXIT_CODE=0
+      ${{ parameters.failOnFindings }} && EXIT_CODE=1 || EXIT_CODE=0
+
+      trivy image \
+        '${{ parameters.imageRef }}' \
+        --scanners vuln,secret,misconfig \
+        --severity ${{ parameters.severity }} \
+        --exit-code $EXIT_CODE \
+        --ignore-unfixed \
+        --format sarif \
+        --output trivy-image-results.sarif \
+        --timeout 10m
+
+      # Human-readable summary in pipeline logs
+      trivy image \
+        '${{ parameters.imageRef }}' \
+        --scanners vuln,secret,misconfig \
+        --severity ${{ parameters.severity }} \
+        --exit-code 0 \
+        --ignore-unfixed \
+        --format table \
+        --timeout 10m
+    displayName: "Trivy – Image Scan"
+    condition: eq('${{ parameters.scanType }}', 'image')
+
+  # ── Publish SARIF as pipeline artifact (visible in Azure DevOps) ──────────
+  - task: PublishBuildArtifacts@1
+    condition: always()
+    inputs:
+      pathToPublish: "$(System.DefaultWorkingDirectory)"
+      artifactName: "trivy-results"
+      publishLocation: Container
+    displayName: "Publish Trivy SARIF Results"

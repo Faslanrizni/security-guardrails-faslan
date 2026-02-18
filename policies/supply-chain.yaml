@@ -1,0 +1,4 @@
+supply_chain:
+  sbom: required
+  artifact_signing: required
+  provenance: required

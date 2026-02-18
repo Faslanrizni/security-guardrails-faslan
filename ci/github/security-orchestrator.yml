@@ -1,0 +1,48 @@
+name: Security Guardrails
+
+on:
+  workflow_call:
+    inputs:
+      image-ref:
+        required: false
+        type: string
+    secrets:
+      FOSSA_API_KEY:
+        required: true
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dependency & License Scan
+        uses: Faslanrizni/security-guardrails/ci/github/fossa-scan.yml@main
+        secrets:
+          FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
+
+      - name: Static Analysis
+        uses: Faslanrizni/security-guardrails/ci/github/sast-scan.yml@main
+
+      - name: Secrets Scan
+        uses: Faslanrizni/security-guardrails/ci/github/secrets-scan.yml@main
+
+      - name: IaC Scan
+        uses: Faslanrizni/security-guardrails/ci/github/iac-scan.yml@main
+
+      - name: Vulnerability Scan – Filesystem (Trivy)
+        uses: Faslanrizni/security-guardrails/ci/github/trivy-scan.yml@main
+        with:
+          scan-type: fs
+          severity: HIGH,CRITICAL
+          fail-on-findings: true
+
+      - name: Vulnerability Scan – Docker Image (Trivy)
+        if: ${{ inputs.image-ref != '' }}
+        uses: Faslanrizni/security-guardrails/ci/github/trivy-scan.yml@main
+        with:
+          scan-type: image
+          image-ref: ${{ inputs.image-ref }}
+          severity: HIGH,CRITICAL
+          fail-on-findings: true

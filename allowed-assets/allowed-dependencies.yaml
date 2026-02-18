@@ -1,0 +1,18 @@
+languages:
+  go:
+    allowed:
+      - github.com/gin-gonic/gin
+      - github.com/go-chi/chi
+      - github.com/jackc/pgx
+      - golang.org/x/crypto
+    blocked:
+      - github.com/dgrijalva/jwt-go
+
+  js:
+    allowed:
+      - express
+      - zod
+      - axios
+    blocked:
+      - request
+      - left-pad

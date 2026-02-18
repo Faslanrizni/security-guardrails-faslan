@@ -1,0 +1,104 @@
+name: Trivy Scan
+
+on:
+  workflow_call:
+    inputs:
+      scan-type:
+        description: "fs | image"
+        required: false
+        type: string
+        default: fs
+      image-ref:
+        description: "Docker image to scan e.g. myapp:abc1234"
+        required: false
+        type: string
+        default: ""
+      severity:
+        description: "Comma-separated severities"
+        required: false
+        type: string
+        default: HIGH,CRITICAL
+      fail-on-findings:
+        description: "Fail the job when vulnerabilities are found"
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  trivy:
+    name: Trivy Vulnerability Scan
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache Trivy DB
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/trivy
+          key: trivy-db-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: trivy-db-${{ runner.os }}-
+
+      - name: Trivy – Filesystem Scan
+        if: ${{ inputs.scan-type == 'fs' }}
+        uses: aquasecurity/trivy-action@0.30.0
+        with:
+          scan-type: fs
+          scan-ref: "."
+          scanners: "vuln,secret,misconfig"
+          severity: ${{ inputs.severity }}
+          exit-code: ${{ inputs.fail-on-findings && '1' || '0' }}
+          ignore-unfixed: true
+          format: sarif
+          output: trivy-results.sarif
+          timeout: "10m"
+
+      - name: Download Docker image artifact
+        if: ${{ inputs.scan-type == 'image' && inputs.image-ref != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp
+
+      - name: Load Docker image
+        if: ${{ inputs.scan-type == 'image' && inputs.image-ref != '' }}
+        run: docker load -i /tmp/image.tar
+
+      - name: Trivy – Image Scan
+        if: ${{ inputs.scan-type == 'image' && inputs.image-ref != '' }}
+        uses: aquasecurity/trivy-action@0.30.0
+        with:
+          scan-type: image
+          image-ref: ${{ inputs.image-ref }}
+          scanners: "vuln,secret,misconfig"
+          severity: ${{ inputs.severity }}
+          exit-code: ${{ inputs.fail-on-findings && '1' || '0' }}
+          ignore-unfixed: true
+          format: sarif
+          output: trivy-results.sarif
+          timeout: "10m"
+
+      - name: Trivy – Table Summary
+        if: always()
+        uses: aquasecurity/trivy-action@0.30.0
+        with:
+          scan-type: ${{ inputs.scan-type }}
+          scan-ref: ${{ inputs.scan-type == 'image' && inputs.image-ref || '.' }}
+          scanners: "vuln,secret,misconfig"
+          severity: ${{ inputs.severity }}
+          exit-code: "0"
+          ignore-unfixed: true
+          format: table
+          timeout: "10m"
+
+      - name: Upload SARIF Results
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy

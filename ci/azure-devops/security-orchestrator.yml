@@ -1,0 +1,42 @@
+parameters:
+  - name: branch
+    type: string
+    default: $(Build.SourceBranchName)
+  - name: repoName
+    type: string
+    default: $(Build.Repository.Name)
+
+steps:
+  - template: fossa-scan.yml
+    parameters:
+      branch: ${{ parameters.branch }}
+      repoName: ${{ parameters.repoName }}
+
+  - template: sast-scan.yml
+  - template: secrets-scan.yml
+  - template: iac-scan.yml
+
+    # ── Trivy: filesystem scan (source + go.mod) ──────────────────────────────
+  - template: trivy-scan.yml
+    parameters:
+      branch: ${{ parameters.branch }}
+      repoName: ${{ parameters.repoName }}
+      scanType: fs
+      severity: HIGH,CRITICAL
+      failOnFindings: true
+
+  # ── Trivy: image scan (only runs when imageRef is supplied) ───────────────
+  - ${{ if ne(parameters.imageRef, '') }}:
+    - template: trivy-scan.yml
+      parameters:
+        branch: ${{ parameters.branch }}
+        repoName: ${{ parameters.repoName }}
+        scanType: image
+        imageRef: ${{ parameters.imageRef }}
+        severity: HIGH,CRITICAL
+        failOnFindings: true
+
+
+
+
+

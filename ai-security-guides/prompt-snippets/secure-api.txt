@@ -1,0 +1,10 @@
+Generate a REST API endpoint in Go.
+
+Constraints:
+- Follow OWASP Top 10
+- Validate all inputs
+- Use context timeouts
+- Prevent SQL injection
+- Return generic error messages
+- Log security events safely
+- Do not expose stack traces

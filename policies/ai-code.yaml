@@ -1,0 +1,5 @@
+ai_code:
+  detection: enabled
+  enforcement:
+    require_extra_review: true
+    stricter_sast: true

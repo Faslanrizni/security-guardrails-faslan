@@ -1,0 +1,6 @@
+blocking:
+  - secret_detected
+  - high_cve_dependency
+  - critical_sast_issue
+  - insecure_iac
+  - unsigned_artifact

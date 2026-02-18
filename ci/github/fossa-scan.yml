@@ -1,0 +1,26 @@
+name: FOSSA Scan
+
+on:
+  workflow_call:
+    secrets:
+      FOSSA_API_KEY:
+        required: true
+
+jobs:
+  fossa:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install FOSSA CLI
+        run: |
+          curl -H 'Cache-Control: no-cache' \
+          https://raw.githubusercontent.com/fossas/fossa-cli/v3.7.1/install-latest.sh | bash
+
+      - name: Run FOSSA
+        run: |
+          fossa analyze --fossa-api-key $FOSSA_API_KEY
+          fossa test --fossa-api-key $FOSSA_API_KEY --fail-on=high
+        env:
+          FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}

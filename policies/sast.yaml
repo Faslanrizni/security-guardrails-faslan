@@ -1,0 +1,9 @@
+sast:
+  mode: blocking
+  severity_threshold: HIGH
+  block_on:
+    - sql-injection
+    - command-injection
+    - insecure-deserialization
+    - auth-bypass
+    - hardcoded-credentials

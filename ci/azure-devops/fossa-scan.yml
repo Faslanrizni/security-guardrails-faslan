@@ -1,0 +1,22 @@
+parameters:
+  - name: branch
+    type: string
+  - name: repoName
+    type: string
+
+steps:
+  - script: |
+      echo "Running FOSSA Scan..."
+
+      fossa analyze \
+        --fossa-api-key $FOSSA_API_KEY \
+        --unpack-archives \
+        -b ${{ parameters.branch }}
+
+      fossa test \
+        --fossa-api-key $FOSSA_API_KEY \
+        --fail-on=high
+
+    displayName: "FOSSA Dependency & License Scan"
+    env:
+      FOSSA_API_KEY: $(FOSSA_API_KEY)
