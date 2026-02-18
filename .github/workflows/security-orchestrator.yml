@@ -12,6 +12,16 @@ on:
         required: false
 
 jobs:
+  trivy-fs:
+    name: Trivy – Filesystem Scan
+    uses: Faslanrizni/security-guardrails-faslan/.github/workflows/trivy-scan.yml@main
+    with:
+      scan-type: fs
+      fail-on-findings: true
+    permissions:
+      contents: read
+      security-events: write
+
   trivy-image:
     name: Trivy – Docker Image Scan
     if: ${{ inputs.image-ref != '' }}
@@ -19,5 +29,7 @@ jobs:
     with:
       scan-type: image
       image-ref: ${{ inputs.image-ref }}
-      severity: HIGH,CRITICAL
       fail-on-findings: true
+    permissions:
+      contents: read
+      security-events: write
