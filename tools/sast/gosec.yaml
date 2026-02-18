@@ -1,0 +1,14 @@
+# Gosec configuration
+# Policy source: policies/sast.yml
+
+severity: high
+confidence: medium
+
+exclude:
+  - G104
+  - G304
+
+tests: false
+
+format: sarif
+out: gosec-results.sarif

@@ -33,3 +33,12 @@ jobs:
     permissions:
       contents: read
       security-events: write
+
+  gosec:
+    name: Gosec – SAST Scan
+    uses: Faslanrizni/security-guardrails-faslan/.github/workflows/gosec-scan.yml@main
+    with:
+      fail-on-findings: true
+    permissions:
+      contents: read
+      security-events: write
