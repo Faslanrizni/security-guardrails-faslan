@@ -42,3 +42,9 @@ jobs:
     permissions:
       contents: read
       security-events: write
+
+  ai-detection:
+    name: AI Code Detection
+    uses: Faslanrizni/security-guardrails-faslan/.github/workflows/ai-detection.yml@testing
+    with:
+      block-on-detection: true
