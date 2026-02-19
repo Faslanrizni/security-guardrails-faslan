@@ -5,7 +5,6 @@ Identifies AI-generated code using multiple heuristics and outputs
 structured results for CI/CD integration.
 """
 
-import os
 import re
 import math
 import sys
@@ -21,7 +20,7 @@ import subprocess
 # Constants
 # ─────────────────────────────────────────────────────────────────────────────
 
-VERSION = "1.2.0"
+VERSION = "1.1.0"
 
 SCAN_EXTENSIONS = {
     ".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".go", ".rb",
@@ -106,6 +105,9 @@ class AICodeDetector:
             self._log("[ERROR] Could not retrieve commit info.", force=True)
             return []
 
+        self._log(f"Resolved SHA : {commit_info['sha']}")
+        self._log(f"Message      : {commit_info['message'][:80]}")
+
         # Analyse commit message
         msg_score, msg_reasons = self._analyze_commit_message(commit_info["message"])
         if msg_score > 0.3:
@@ -118,8 +120,11 @@ class AICodeDetector:
             })
 
         # Analyse changed files
-        files = self._get_changed_files(commit_hash)
+        files = self._get_changed_files(commit_info["sha"])
         self._log(f"Files changed: {len(files)}")
+
+        if not files:
+            self._log("  ⚠ No files returned by diff — nothing to scan.", force=True)
 
         for file_path in files:
             if not self._should_scan(file_path):
@@ -173,20 +178,60 @@ class AICodeDetector:
 
     def _get_commit_info(self, commit_hash: str) -> Optional[Dict]:
         try:
-            message = self._git("show", "-s", "--format=%s%n%b", commit_hash)
-            return {"message": message, "hash": commit_hash}
+            sha     = self._git("rev-parse", commit_hash)
+            message = self._git("show", "-s", "--format=%s%n%b", sha)
+            return {"sha": sha, "message": message}
         except Exception as e:
             self._log(f"[git error] {e}", force=True)
             return None
 
-    def _get_changed_files(self, commit_hash: str) -> List[str]:
+    def _get_changed_files(self, sha: str) -> List[str]:
+        """
+        Return files changed in this commit.
+
+        Strategy (in order):
+        1. diff-tree against the commit's own parent  ← works for normal commits
+        2. diff HEAD~1..HEAD via the working tree     ← fallback for merge commits
+        3. diff --name-only against parent via git log ← last resort
+        """
+        files = self._try_diff_tree(sha)
+        if files:
+            self._log(f"  [diff-tree] found {len(files)} file(s)")
+            return files
+
+        self._log("  [diff-tree] returned nothing, trying diff HEAD~1..HEAD")
+        files = self._try_diff_parent()
+        if files:
+            self._log(f"  [diff-parent] found {len(files)} file(s)")
+            return files
+
+        self._log("  [diff-parent] returned nothing, trying log --diff-filter")
+        files = self._try_log_diff(sha)
+        self._log(f"  [log-diff] found {len(files)} file(s)")
+        return files
+
+    def _try_diff_tree(self, sha: str) -> List[str]:
+        try:
+            out = self._git("diff-tree", "--no-commit-id", "--name-only", "-r", sha)
+            return [f for f in out.splitlines() if f]
+        except Exception:
+            return []
+
+    def _try_diff_parent(self) -> List[str]:
+        try:
+            out = self._git("diff", "--name-only", "HEAD~1", "HEAD")
+            return [f for f in out.splitlines() if f]
+        except Exception:
+            return []
+
+    def _try_log_diff(self, sha: str) -> List[str]:
         try:
             out = self._git(
-                "diff-tree", "--no-commit-id", "--name-only", "-r", commit_hash
+                "log", "-1", "--name-only", "--diff-filter=ACM",
+                "--format=", sha
             )
             return [f for f in out.splitlines() if f]
-        except Exception as e:
-            self._log(f"[git error] {e}", force=True)
+        except Exception:
             return []
 
     # ── analysis ──────────────────────────────────────────────────────────────
@@ -308,7 +353,7 @@ class AICodeDetector:
 
     def _print_report(self):
         if not self.findings:
-            print("\n✅  No AI-generated code detected.")
+            print("\n  No AI-generated code detected.")
             return
 
         high = [f for f in self.findings if f.get("requires_review")]
@@ -319,12 +364,12 @@ class AICodeDetector:
         print("═" * 62)
 
         if high:
-            print(f"\n🔴  REQUIRES EXTRA REVIEW  ({len(high)} finding{'s' if len(high) > 1 else ''})")
+            print(f"\n  REQUIRES EXTRA REVIEW  ({len(high)} finding{'s' if len(high) > 1 else ''})")
             for f in high:
                 self._print_finding(f)
 
         if low:
-            print(f"\n🟡  POSSIBLE AI  ({len(low)} finding{'s' if len(low) > 1 else ''})")
+            print(f"\n  POSSIBLE AI  ({len(low)} finding{'s' if len(low) > 1 else ''})")
             for f in low:
                 self._print_finding(f)
 
@@ -375,7 +420,6 @@ Exit codes:
     detector = AICodeDetector(repo_path=args.repo_path, verbose=args.verbose)
     detector.scan_commit(args.commit)
 
-    # Write JSON to a dedicated file so it never mixes with stdout
     if args.json_output:
         output_path = Path(args.json_output)
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -383,7 +427,7 @@ Exit codes:
         print(f"\nJSON results written to: {args.json_output}")
 
     if args.block and detector.should_block():
-        print("\n🚫 AI-generated code detected — blocking merge until review is complete.")
+        print("\n AI-generated code detected — blocking merge until review is complete.")
         sys.exit(1)
 
     sys.exit(0)
