@@ -28,12 +28,12 @@ VERSION = "1.0.0"
 
 DEFAULT_SKIP_DIRS = {
     ".git", "node_modules", "dist", "build",
-    "__pycache__", ".venv", ".idea", ".vscode", "vendor",
+    "__pycache__", ".venv", ".idea", ".vscode", "vendor", ""
 }
 
 DEFAULT_SKIP_FILES = {
     "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
-    "poetry.lock", "composer.lock",
+    "poetry.lock", "composer.lock","go.sum","go.mod", 
 }
 
 DEFAULT_FILE_PATTERNS = [
