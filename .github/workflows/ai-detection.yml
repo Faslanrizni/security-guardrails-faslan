@@ -12,16 +12,13 @@ on:
         description: "Block merge when high-confidence AI code is found"
         required: false
         type: boolean
-        default: true        # matches policies/ai-code.yaml enforcement
+        default: true
 
 jobs:
   ai-detection:
     name: AI Code Detection
     runs-on: ubuntu-latest
 
-    # NOTE: pull-requests: write must be granted by the CALLER workflow
-    # (security-orchestrator.yml) — nested reusable workflows cannot
-    # elevate permissions beyond what the caller grants.
     permissions:
       contents: read
       pull-requests: write
@@ -30,7 +27,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 2     # need parent commit for diff-tree
+          fetch-depth: 2
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -38,19 +35,20 @@ jobs:
           python-version: "3.11"
 
       # ── Run detector ──────────────────────────────────────────────────────
+      # JSON is written to a file via --json-output so it never mixes with
+      # the human-readable stdout report. This was the root cause of the
+      # empty artifact — tee was capturing mixed output as invalid JSON.
       - name: Run AI Code Detector
         id: ai_detect
-        continue-on-error: true   # capture exit code without failing the step
+        continue-on-error: true
         run: |
           python tools/ai-detection/ai-code-detector.py \
             --commit ${{ inputs.commit }} \
-            --json \
+            --json-output ai-detection-results.json \
             --verbose \
-            ${{ inputs.block-on-detection && '--block' || '' }} \
-            | tee ai-detection-results.json
+            ${{ inputs.block-on-detection && '--block' || '' }}
 
-          # Persist the real exit code for the enforcement step below
-          echo "DETECTOR_EXIT=${PIPESTATUS[0]}" >> $GITHUB_ENV
+          echo "DETECTOR_EXIT=$?" >> $GITHUB_ENV
 
       # ── Upload results as artifact ────────────────────────────────────────
       - name: Upload Detection Results
@@ -75,14 +73,14 @@ jobs:
               const data = JSON.parse(raw);
 
               if (data.blocked) {
-                body = `##  AI Code Detected — Review Required\n\n`;
+                body = `## 🔴 AI Code Detected — Review Required\n\n`;
                 body += `This PR contains code flagged as likely AI-generated.\n`;
                 body += `A manual review is required before merge (per \`policies/ai-code.yaml\`).\n\n`;
               } else if (data.findings.length > 0) {
-                body = `##  Possible AI Code Detected\n\n`;
+                body = `## 🟡 Possible AI Code Detected\n\n`;
                 body += `Some files show patterns consistent with AI generation and have been flagged for review.\n\n`;
               } else {
-                body = `##  AI Detection — Clean\n\nNo AI-generated code patterns detected.`;
+                body = `## ✅ AI Detection — Clean\n\nNo AI-generated code patterns detected.`;
               }
 
               if (data.findings.length > 0) {
@@ -108,12 +106,11 @@ jobs:
               body,
             });
 
-      # ── Enforce block policy ──────────────────────────────────────────────
-      # Done as a separate step so the PR comment always runs first
+      # ── Enforce block policy (runs after comment so comment is never skipped)
       - name: Enforce Block Policy
         if: ${{ inputs.block-on-detection }}
         run: |
           if [ "${DETECTOR_EXIT}" != "0" ]; then
-            echo " AI-generated code detected — blocking merge until review is complete."
+            echo "🚫 AI-generated code detected — blocking merge until review is complete."
             exit 1
           fi

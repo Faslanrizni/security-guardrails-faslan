@@ -10,7 +10,6 @@ import re
 import math
 import sys
 import json
-import hashlib
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 from collections import Counter
@@ -22,7 +21,7 @@ import subprocess
 # Constants
 # ─────────────────────────────────────────────────────────────────────────────
 
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 
 SCAN_EXTENSIONS = {
     ".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".go", ".rb",
@@ -68,9 +67,8 @@ AI_CODE_PATTERNS = [
     (r"function\s+(myFunction|tempFunc|helperFunction|doSomething)\b", 0.15, "Placeholder function name"),
 ]
 
-# Patterns that reduce likelihood of AI generation
 HUMAN_SIGNALS = [
-    (r"(wtf|hack|kludge|workaround|shim|band-?aid)", -0.1),     # frustration
+    (r"(wtf|hack|kludge|workaround|shim|band-?aid)", -0.1),
     (r"(git blame|bisect|revert|hotfix)", -0.05),
     (r"(legacy|deprecated|old|ancient|crusty)", -0.05),
     (r"(prof(ile|iling)|perf|benchmark|flamegraph)", -0.05),
@@ -100,7 +98,7 @@ class AICodeDetector:
 
     def scan_commit(self, commit_hash: str = "HEAD") -> List[Dict[str, Any]]:
         self._log(f"AI Code Detector v{VERSION}")
-        self._log(f"Repo : {self.repo_path}")
+        self._log(f"Repo  : {self.repo_path}")
         self._log(f"Commit: {commit_hash}\n")
 
         commit_info = self._get_commit_info(commit_hash)
@@ -241,19 +239,16 @@ class AICodeDetector:
         lines = content.splitlines()
         total_lines = max(len(lines), 1)
 
-        # ── pattern matching ──
         for pattern, weight, label in AI_CODE_PATTERNS:
             matches = re.findall(pattern, content, re.IGNORECASE)
             if matches:
-                score += weight * min(len(matches), 3)   # cap multiplier at 3×
+                score += weight * min(len(matches), 3)
                 indicators.append(f"{label} (×{len(matches)})" if len(matches) > 1 else label)
 
-        # ── human signals (reduce score) ──
         for pattern, weight in HUMAN_SIGNALS:
             if re.search(pattern, content, re.IGNORECASE):
-                score += weight   # weight is negative
+                score += weight
 
-        # ── comment density ──
         comment_lines = sum(
             1 for l in lines
             if re.match(r"^\s*(//|#|/\*|\*|\"\"\")", l)
@@ -268,17 +263,14 @@ class AICodeDetector:
         elif comment_ratio < 0.04:
             score -= 0.05
 
-        # ── function / class count ──
         fn_count = len(re.findall(r"\b(def |function |func |sub )\s*\w+", content))
         cls_count = len(re.findall(r"\b(class |struct |interface )\s*\w+", content))
         total_units = fn_count + cls_count
-
-        density = total_units / (total_lines / 10)   # units per 10 lines
+        density = total_units / (total_lines / 10)
         if density > 1.5 and total_units > 8:
             score += 0.15
             indicators.append(f"High function/class density ({total_units} in {total_lines} lines)")
 
-        # ── repetitive lines (AI copy-pastes boilerplate) ──
         non_blank = [l.strip() for l in lines if l.strip()]
         if non_blank:
             top_count = Counter(non_blank).most_common(1)[0][1]
@@ -286,15 +278,13 @@ class AICodeDetector:
                 score += 0.15
                 indicators.append(f"Repetitive line pattern (×{top_count})")
 
-        # ── entropy ──
         entropy = self._entropy(content)
         if entropy > 4.8:
             score += 0.1
             indicators.append(f"High character entropy ({entropy:.2f})")
         elif entropy < 3.2 and total_lines > 20:
-            score -= 0.05   # very low entropy → likely templated human code
+            score -= 0.05
 
-        # ── docstring ratio (AI over-documents) ──
         docstring_blocks = len(re.findall(r'("""|\'\'\')', content))
         if docstring_blocks > 6:
             score += 0.1
@@ -318,7 +308,7 @@ class AICodeDetector:
 
     def _print_report(self):
         if not self.findings:
-            print("\n  No AI-generated code detected.")
+            print("\n✅  No AI-generated code detected.")
             return
 
         high = [f for f in self.findings if f.get("requires_review")]
@@ -329,12 +319,12 @@ class AICodeDetector:
         print("═" * 62)
 
         if high:
-            print(f"\n  REQUIRES EXTRA REVIEW  ({len(high)} finding{'s' if len(high) > 1 else ''})")
+            print(f"\n🔴  REQUIRES EXTRA REVIEW  ({len(high)} finding{'s' if len(high) > 1 else ''})")
             for f in high:
                 self._print_finding(f)
 
         if low:
-            print(f"\n  POSSIBLE AI  ({len(low)} finding{'s' if len(low) > 1 else ''})")
+            print(f"\n🟡  POSSIBLE AI  ({len(low)} finding{'s' if len(low) > 1 else ''})")
             for f in low:
                 self._print_finding(f)
 
@@ -372,7 +362,12 @@ Exit codes:
     parser.add_argument("--repo-path", default=".", help="Path to git repository")
     parser.add_argument("--commit", default="HEAD", help="Commit hash to scan (default: HEAD)")
     parser.add_argument("--block", action="store_true", help="Exit 1 if high-confidence AI code found")
-    parser.add_argument("--json", action="store_true", help="Output findings as JSON")
+    parser.add_argument(
+        "--json-output",
+        default="",
+        metavar="FILE",
+        help="Write JSON results to FILE (keeps stdout clean for human-readable report)",
+    )
     parser.add_argument("--verbose", action="store_true", help="Print debug info")
     parser.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
     args = parser.parse_args()
@@ -380,11 +375,15 @@ Exit codes:
     detector = AICodeDetector(repo_path=args.repo_path, verbose=args.verbose)
     detector.scan_commit(args.commit)
 
-    if args.json:
-        print(detector.to_json())
+    # Write JSON to a dedicated file so it never mixes with stdout
+    if args.json_output:
+        output_path = Path(args.json_output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(detector.to_json(), encoding="utf-8")
+        print(f"\nJSON results written to: {args.json_output}")
 
     if args.block and detector.should_block():
-        print("\n  AI-generated code detected — blocking merge until review is complete.")
+        print("\n🚫 AI-generated code detected — blocking merge until review is complete.")
         sys.exit(1)
 
     sys.exit(0)
