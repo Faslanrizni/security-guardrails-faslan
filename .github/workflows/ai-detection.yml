@@ -52,14 +52,15 @@ jobs:
 
             EXIT_CODE=$?
 
-            echo "DETECTOR_EXIT=$EXIT_CODE" >> $GITHUB_ENV
+            echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
 
-            # Ensure JSON file always exists so artifact upload never fails
+            # Ensure JSON always exists
             if [ ! -f ai-detection-results.json ]; then
             echo '{"blocked":false,"findings":[]}' > ai-detection-results.json
             fi
 
             exit 0
+
 
 
       # ── Upload results as artifact ────────────────────────────────────────
