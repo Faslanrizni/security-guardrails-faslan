@@ -1,5 +1,66 @@
+# ai_code:
+#   detection: enabled
+#   enforcement:
+#     require_extra_review: true
+#     stricter_sast: true
+
+
 ai_code:
-  detection: enabled
+  detection:
+    enabled: true
+    tool: tools/ai-detection/ai-code-detector.py
+    version: "1.1.0"
+
+  # Confidence bands ─────────────────────────────────────────────────────────
+  thresholds:
+    flag:   0.40   # score ≥ 0.40 → flag in report / PR comment
+    block:  0.70   # score ≥ 0.70 → block merge until reviewed
+
+  # Per-signal weights can be tuned here if false-positive rate is too high
+  # (requires detector to load config — future enhancement)
+  tuning:
+    high_comment_density_weight: 0.2
+    explicit_ai_signature_weight: 0.5
+    placeholder_name_weight: 0.1
+
+  # Enforcement ──────────────────────────────────────────────────────────────
   enforcement:
-    require_extra_review: true
-    stricter_sast: true
+    require_extra_review: true    # adds reviewer requirement to PR
+    stricter_sast: true           # semgrep runs extended ruleset on flagged files
+    block_merge: true             # CI exits 1; merge gate fails
+
+  # Scope ────────────────────────────────────────────────────────────────────
+  scan:
+    commit_messages: true
+    file_content: true
+    extensions:
+      - .py
+      - .js
+      - .ts
+      - .jsx
+      - .tsx
+      - .java
+      - .go
+      - .rb
+      - .php
+      - .c
+      - .cpp
+      - .h
+      - .cs
+      - .swift
+      - .rs
+      - .kt
+    exclude_paths:
+      - "vendor/"
+      - "node_modules/"
+      - "dist/"
+      - "build/"
+      - ".github/"
+      - "*.min.js"
+
+  # Reporting ────────────────────────────────────────────────────────────────
+  reporting:
+    pr_comment: true
+    artifact_name: ai-detection-results
+    retention_days: 30
+    json_output: true

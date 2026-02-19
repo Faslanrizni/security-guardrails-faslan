@@ -75,14 +75,14 @@ jobs:
               const data = JSON.parse(raw);
 
               if (data.blocked) {
-                body = `## 🔴 AI Code Detected — Review Required\n\n`;
+                body = `##  AI Code Detected — Review Required\n\n`;
                 body += `This PR contains code flagged as likely AI-generated.\n`;
                 body += `A manual review is required before merge (per \`policies/ai-code.yaml\`).\n\n`;
               } else if (data.findings.length > 0) {
-                body = `## 🟡 Possible AI Code Detected\n\n`;
+                body = `##  Possible AI Code Detected\n\n`;
                 body += `Some files show patterns consistent with AI generation and have been flagged for review.\n\n`;
               } else {
-                body = `## ✅ AI Detection — Clean\n\nNo AI-generated code patterns detected.`;
+                body = `##  AI Detection — Clean\n\nNo AI-generated code patterns detected.`;
               }
 
               if (data.findings.length > 0) {
@@ -114,6 +114,6 @@ jobs:
         if: ${{ inputs.block-on-detection }}
         run: |
           if [ "${DETECTOR_EXIT}" != "0" ]; then
-            echo "🚫 AI-generated code detected — blocking merge until review is complete."
+            echo " AI-generated code detected — blocking merge until review is complete."
             exit 1
           fi
