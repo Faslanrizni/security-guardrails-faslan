@@ -138,7 +138,7 @@ class SecretsPostProcessor:
 
     def print_findings(self):
         if not self.findings:
-            print("\n✅  No secrets found.")
+            print("\n  No secrets found.")
             return
 
         critical = [f for f in self.findings if f["severity"] == "CRITICAL"]
@@ -151,9 +151,9 @@ class SecretsPostProcessor:
         print(f"{'═' * 62}")
 
         for group, label in [
-            (critical, "🔴 CRITICAL"),
-            (high,     "🟠 HIGH"),
-            (medium,   "🟡 MEDIUM"),
+            (critical, " CRITICAL"),
+            (high,     " HIGH"),
+            (medium,   " MEDIUM"),
         ]:
             if group:
                 print(f"\n{label} ({len(group)})")
@@ -181,7 +181,7 @@ class SecretsPostProcessor:
             "findings": self.findings,
         }
         Path(path).write_text(json.dumps(output, indent=2))
-        print(f"📄  JSON report written to: {path}")
+        print(f"  JSON report written to: {path}")
 
     def _log(self, msg: str):
         if self.verbose:
@@ -211,7 +211,7 @@ def main():
         processor.save_json(args.json_output)
 
     if args.block and processor.should_block():
-        print("🚫  Blocking secrets found.")
+        print("  Blocking secrets found.")
         sys.exit(1)
 
 
