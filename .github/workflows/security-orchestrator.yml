@@ -54,7 +54,6 @@ jobs:
     name: Secrets Scan
     uses: Faslanrizni/security-guardrails-faslan/.github/workflows/secrets-scan.yml@testing
     with:
-      run-gitleaks: true
       block-on-findings: true
     permissions:
       contents: read
