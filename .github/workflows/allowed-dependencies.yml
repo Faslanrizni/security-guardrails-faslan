@@ -29,7 +29,7 @@ jobs:
       - name: Checkout guardrails repo
         uses: actions/checkout@v4
         with:
-          repository: YOUR_ORG/security-guardrails   # ← update this
+          repository: Faslanrizni/security-guardrails-faslan   
           ref: main
           path: guardrails
 
