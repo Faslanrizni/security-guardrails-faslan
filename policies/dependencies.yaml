@@ -1,7 +1,7 @@
 dependencies:
   block_on:
-    cve_severity: HIGH
+    cve_severity: HIGH          # trivy --severity HIGH,CRITICAL
   disallowed_licenses:
     - GPL-3.0
     - AGPL-3.0
-  auto_fix: true
+  auto_fix: false
