@@ -19,18 +19,16 @@ jobs:
       pull-requests: write
 
     steps:
-      # ── Checkout the product repo (the repo being scanned) ───────────────
       - name: Checkout product repo
         uses: actions/checkout@v4
         with:
           path: product
 
-      # ── Checkout the guardrails repo (contains policy + enforcer) ────────
       - name: Checkout guardrails repo
         uses: actions/checkout@v4
         with:
-          repository: Faslanrizni/security-guardrails-faslan   
-          ref: main
+          repository: Faslanrizni/security-guardrails-faslan
+          ref: testing # update the correct guarrails branch here
           path: guardrails
 
       - name: Set up Python
@@ -41,13 +39,11 @@ jobs:
       - name: Install PyYAML
         run: pip install pyyaml
 
-      # ── Pre-create results file so artifact upload never fails ───────────
       - name: Initialise results file
         run: |
-          echo '{"version":"1.0.0","blocked":false,"findings":[]}' \
+          echo '{"version":"1.0.0","blocked":false,"total_violations":0,"findings":[]}' \
             > dep-check-results.json
 
-      # ── Run the enforcer ─────────────────────────────────────────────────
       - name: Run Allowed Dependencies Enforcer
         run: |
           set +e
@@ -61,9 +57,8 @@ jobs:
           ENFORCER_EXIT=$?
           echo "ENFORCER_EXIT=$ENFORCER_EXIT" >> $GITHUB_ENV
 
-          exit 0   # always continue so we can upload results and comment
+          exit 0
 
-      # ── Upload results artifact ───────────────────────────────────────────
       - name: Upload Results
         if: always()
         uses: actions/upload-artifact@v4
@@ -72,7 +67,6 @@ jobs:
           path: dep-check-results.json
           retention-days: 30
 
-      # ── Post PR comment with findings ─────────────────────────────────────
       - name: Comment on PR
         if: always() && github.event_name == 'pull_request'
         uses: actions/github-script@v7
@@ -86,23 +80,23 @@ jobs:
               const data = JSON.parse(raw);
 
               if (data.blocked) {
-                body  = `## 🚫 Dependency Check — Merge Blocked\n\n`;
-                body += `**${data.total_violations}** unapproved or blocked package(s) found in this PR.\n\n`;
+                body  = `##  Dependency Check — Merge Blocked\n\n`;
+                body += `**${data.total_violations}** unapproved or blocked package(s) found.\n\n`;
                 body += `> To get a package approved: open a PR in the \`security-guardrails\` repo `;
                 body += `and add it to \`policies/allowed-dependencies.yaml\`.\n\n`;
               } else if (data.findings && data.findings.length > 0) {
-                body  = `## ⚠️ Dependency Check — Warnings\n\n`;
-                body += `**${data.findings.length}** package(s) require attention.\n\n`;
+                body  = `##  Dependency Check — Warnings\n\n`;
+                body += `**${data.findings.length}** package(s) require attention (build not blocked).\n\n`;
               } else {
-                body  = `## ✅ Dependency Check — All Clear\n\nAll dependencies are approved.`;
+                body  = `##  Dependency Check — All Clear\n\nAll dependencies are approved.`;
               }
 
               if (data.findings && data.findings.length > 0) {
-                body += `**Findings (${data.findings.length}):**\n`;
+                body += `**Findings:**\n`;
                 for (const f of data.findings) {
-                  const icon = f.kind === 'blocked' ? '🚫'
-                             : f.kind === 'requires_review' ? '⚠️' : '❌';
-                  body += `\n${icon} \`${f.package}\` (${f.language}) — ${f.kind}`;
+                  const icon = f.kind === 'blocked'         ? '🚫'
+                             : f.kind === 'requires_review'  ? '⚠️' : '❌';
+                  body += `\n${icon} \`${f.package}\` (${f.language} · ${f.version}) — **${f.kind}**`;
                   if (f.reason) body += `\n  > ${f.reason}`;
                 }
               }
@@ -117,13 +111,12 @@ jobs:
               body,
             });
 
-      # ── Enforce block policy ──────────────────────────────────────────────
       - name: Enforce Block Policy
         if: ${{ inputs.block-on-unapproved }}
         run: |
           echo "Enforcer exit code: ${{ env.ENFORCER_EXIT }}"
           if [ "${{ env.ENFORCER_EXIT }}" = "1" ]; then
-            echo "🚫 Unapproved or blocked dependencies detected — blocking merge."
+            echo "🚫 Unapproved or blocked dependencies found — blocking merge."
             exit 1
           fi
           echo "✅ All dependencies approved."
