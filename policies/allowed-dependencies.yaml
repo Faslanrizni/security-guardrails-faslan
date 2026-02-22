@@ -22,20 +22,34 @@ allowed_dependencies:
   # ════════════════════════════════════════════════════════════════════
   # GO
   # ════════════════════════════════════════════════════════════════════
+  # ════════════════════════════════════════════════════════════════════
+  # GO
+  # ════════════════════════════════════════════════════════════════════
   go:
     allowed:
       # Web frameworks
       - github.com/gin-gonic/gin
       - github.com/go-chi/chi
+      - github.com/go-chi/cors
       - github.com/labstack/echo/v4
+      - github.com/gorilla/mux
 
-      # Database drivers
+      # Auth / JWT
+      - github.com/go-chi/jwtauth/v5
+
+      # Database drivers / ORM helpers
       - github.com/jackc/pgx
       - github.com/go-sql-driver/mysql
       - github.com/lib/pq
+      - github.com/jmoiron/sqlx
+      - modernc.org/sqlite
 
       # Cryptography
       - golang.org/x/crypto
+
+      # API Documentation / Swagger
+      - github.com/swaggo/http-swagger
+      - github.com/swaggo/swag
 
       # Utilities
       - github.com/spf13/viper
@@ -48,20 +62,22 @@ allowed_dependencies:
       - github.com/golang/mock
 
     blocked:
-      # Reason is shown in CI output
       - package: github.com/dgrijalva/jwt-go
         reason: "Unmaintained — use github.com/golang-jwt/jwt instead"
+
       - package: github.com/gorilla/context
         reason: "Deprecated — functionality is in stdlib context package"
+
       - package: github.com/davecgh/go-spew/spew
         reason: "Debug-only package — not permitted in production code"
+
       - package: github.com/pkg/errors
         reason: "Use native Go errors with fmt.Errorf and errors.Is/As"
 
     requires_review:
-      - github.com/aws/aws-sdk-go          # Large attack surface
-      - github.com/google/go-containerregistry  # Container operations
-      - github.com/hashicorp/vault          # Secret management
+      - github.com/aws/aws-sdk-go
+      - github.com/google/go-containerregistry
+      - github.com/hashicorp/vault
 
   # ════════════════════════════════════════════════════════════════════
   # JAVASCRIPT / NODE.JS
