@@ -1,9 +1,10 @@
 blocking:
   - secret_detected
   - gitleaks_finding            # gitleaks: any rule match
-  - high_cve_dependency
-  - critical_sast_issue
-  - insecure_iac
-  - unsigned_artifact
+  - high_cve_dependency         # trivy: HIGH/CRITICAL CVE found
+  - critical_sast_issue         # gosec: high severity SAST finding
+  - insecure_iac                # checkov: IaC misconfiguration
+  - unsigned_artifact           # supply chain: artifact not signed
   - ai_code_requires_review     # ai-detection: confidence ≥ 0.70
-  - unapproved_dependency       # allowed-deps-enforcer: package not in allowed[]
+  - unapproved_dependency       # package not in allowed-dependencies.yaml
+  - blocked_dependency          # package explicitly blocked in policy

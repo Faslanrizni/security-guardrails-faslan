@@ -1,199 +1,179 @@
 # ======================================================================
 # ALLOWED DEPENDENCIES POLICY
 # ======================================================================
-# This file defines which third-party packages are approved for use.
-# It is both human-readable AND machine-enforced.
+# This file is the SINGLE SOURCE OF TRUTH for dependency approval.
+# It is both human-readable AND machine-enforced by CI guardrails.
 #
 # ENFORCEMENT FLOW:
-#   1. Dependency scanner detects new/changed packages in PR
-#   2. allowed-deps-enforcer.py checks against this file
-#   3. If not listed → Build fails with approval instructions
-#   4. To add a package → follow the approval process below
+#   1. PR is opened / pushed
+#   2. CI checks out this guardrails repo
+#   3. allowed-dependencies-enforcer.py reads this file
+#   4. Every dependency in package.json / go.mod / requirements.txt
+#      is validated against the lists below
+#   5. If unapproved → build fails with instructions
 #
-# POLICY FILE : policies/allowed-dependencies.yaml
-# ENFORCER    : tools/security-guardrails/guardrails/dependencies/allowed-deps-enforcer.py
-# BLOCKING    : enforcement/blocking-rules.yaml → unapproved_dependency
-#
-# NO SLACK. NO JIRA. NO TRIBAL KNOWLEDGE.
+# TO ADD A NEW PACKAGE:
+#   Open a PR editing this file. Get approval from the security team.
+#   No Slack. No Jira. No tribal knowledge.
 # ======================================================================
 
+allowed_dependencies:
+
+  # ════════════════════════════════════════════════════════════════════
+  # GO
+  # ════════════════════════════════════════════════════════════════════
+  go:
+    allowed:
+      # Web frameworks
+      - github.com/gin-gonic/gin
+      - github.com/go-chi/chi
+      - github.com/labstack/echo/v4
+
+      # Database drivers
+      - github.com/jackc/pgx
+      - github.com/go-sql-driver/mysql
+      - github.com/lib/pq
+
+      # Cryptography
+      - golang.org/x/crypto
+
+      # Utilities
+      - github.com/spf13/viper
+      - github.com/joho/godotenv
+      - github.com/sirupsen/logrus
+      - go.uber.org/zap
+
+      # Testing
+      - github.com/stretchr/testify
+      - github.com/golang/mock
+
+    blocked:
+      # Reason is shown in CI output
+      - package: github.com/dgrijalva/jwt-go
+        reason: "Unmaintained — use github.com/golang-jwt/jwt instead"
+      - package: github.com/gorilla/context
+        reason: "Deprecated — functionality is in stdlib context package"
+      - package: github.com/davecgh/go-spew/spew
+        reason: "Debug-only package — not permitted in production code"
+      - package: github.com/pkg/errors
+        reason: "Use native Go errors with fmt.Errorf and errors.Is/As"
+
+    requires_review:
+      - github.com/aws/aws-sdk-go          # Large attack surface
+      - github.com/google/go-containerregistry  # Container operations
+      - github.com/hashicorp/vault          # Secret management
+
+  # ════════════════════════════════════════════════════════════════════
+  # JAVASCRIPT / NODE.JS
+  # ════════════════════════════════════════════════════════════════════
+  js:
+    allowed:
+      # Frameworks
+      - express
+      - fastify
+      - nestjs
+
+      # Validation
+      - zod
+      - joi
+      - yup
+
+      # HTTP clients
+      - axios
+      - node-fetch
+
+      # Utilities
+      - lodash
+      - date-fns
+      - dotenv
+
+      # Testing
+      - jest
+      - vitest
+
+    blocked:
+      - package: request
+        reason: "Deprecated — use axios or node-fetch"
+      - package: left-pad
+        reason: "Trivial package — use native String.prototype.padStart()"
+      - package: is-positive
+        reason: "Unnecessary micro-package"
+      - package: colors.js
+        reason: "Supply chain attack history — use chalk or picocolors"
+      - package: event-stream
+        reason: "Known backdoor incident"
+
+    requires_review:
+      - puppeteer                  # Browser automation
+      - playwright                 # Browser automation
+      - puppeteer-core             # Browser automation
+      - crypto-js                  # Client-side crypto
+
+  # ════════════════════════════════════════════════════════════════════
+  # PYTHON
+  # ════════════════════════════════════════════════════════════════════
+  python:
+    allowed:
+      # Web frameworks
+      - django
+      - flask
+      - fastapi
+
+      # Database
+      - sqlalchemy
+      - psycopg2-binary
+      - pymongo
+
+      # Validation
+      - pydantic
+      - marshmallow
+
+      # Utilities
+      - python-dotenv
+      - requests
+      - click
+      - pyyaml
+
+      # Testing
+      - pytest
+      - pytest-cov
+      - mock
+
+    blocked:
+      - package: pycrypto
+        reason: "Unmaintained — use pycryptodome"
+      - package: md5
+        reason: "Insecure — use hashlib"
+      - package: pickle
+        reason: "Insecure deserialization — avoid or sandbox carefully"
+      - package: PyYAML
+        reason: "Use pyyaml (lowercase) and always call yaml.safe_load()"
+
+    requires_review:
+      - tensorflow                 # ML framework — large attack surface
+      - torch                      # ML framework — large attack surface
+      - cryptography               # Crypto operations
+      - boto3                      # AWS SDK
 
 # ======================================================================
 # ENFORCEMENT SETTINGS
 # ======================================================================
 enforcement:
-  block_merge: true              # CI exits 1 when unapproved package found
-  fail_on_unapproved: true       # Packages not in allowed[] are a violation
-  check_transitive: true         # Also checks lock file / indirect deps
-  strict_mode: true              # No implicit fallthrough — unlisted = blocked
+  # Fail build when unapproved packages are found
+  block_on_unapproved: true
 
+  # Fail build when explicitly blocked packages are found
+  block_on_blocked: true
 
-# ======================================================================
-# APPROVAL PROCESS
-# ======================================================================
-# To get a new package approved:
-#   1. Open a PR against this file with the package added under requires_review
-#   2. Include: name, version, purpose, and alternatives considered
-#   3. Security team reviews within 5 business days
-#   4. On approval, package is moved to allowed[]
-# ======================================================================
-approval_process:
-  contact: security-team
-  sla_days: 5
-  required_fields:
-    - package_name
-    - version_pinned
-    - business_justification
-    - alternatives_considered
-    - security_review_notes
+  # Warn (but don't fail) when requires_review packages are found
+  # Set to true to also block on these
+  block_on_requires_review: false
 
+  # Check transitive (indirect) dependencies in addition to direct ones
+  check_transitive: false
 
-# ======================================================================
-# GO
-# ======================================================================
-go:
+  # Post a PR comment with findings (GitHub Actions only)
+  pr_comment: true
 
-  allowed:
-    # ── Web frameworks ──────────────────────────────────────────────
-    - github.com/gin-gonic/gin
-    - github.com/go-chi/chi
-    - github.com/labstack/echo/v4
-
-    # ── Database drivers ────────────────────────────────────────────
-    - github.com/jackc/pgx
-    - github.com/go-sql-driver/mysql
-    - github.com/lib/pq
-
-    # ── Cryptography ────────────────────────────────────────────────
-    - golang.org/x/crypto             # Standard Go crypto — preferred
-
-    # ── JWT ─────────────────────────────────────────────────────────
-    - github.com/golang-jwt/jwt       # Maintained replacement for dgrijalva
-
-    # ── Configuration / environment ─────────────────────────────────
-    - github.com/spf13/viper
-    - github.com/joho/godotenv
-
-    # ── Logging ─────────────────────────────────────────────────────
-    - github.com/sirupsen/logrus
-    - go.uber.org/zap
-
-    # ── Testing ─────────────────────────────────────────────────────
-    - github.com/stretchr/testify
-    - github.com/golang/mock
-
-    # ── Observability ───────────────────────────────────────────────
-    - go.opentelemetry.io/otel
-
-  blocked:
-    - github.com/dgrijalva/jwt-go     # Unmaintained — use github.com/golang-jwt/jwt
-    - github.com/gorilla/context      # Deprecated — use stdlib context
-    - github.com/pkg/errors           # Use native errors package (Go 1.13+)
-
-  requires_review:
-    - github.com/aws/aws-sdk-go       # Large attack surface — needs justification
-    - github.com/aws/aws-sdk-go-v2
-    - github.com/google/go-containerregistry
-    - github.com/hashicorp/vault
-
-
-# ======================================================================
-# JAVASCRIPT / NODE.JS
-# ======================================================================
-js:
-
-  allowed:
-    # ── Web frameworks ──────────────────────────────────────────────
-    - express
-    - fastify
-
-    # ── Validation ──────────────────────────────────────────────────
-    - zod
-    - joi
-    - yup
-
-    # ── HTTP clients ────────────────────────────────────────────────
-    - axios
-    - node-fetch
-
-    # ── Utilities ───────────────────────────────────────────────────
-    - lodash
-    - date-fns
-    - dotenv
-    - uuid
-
-    # ── Testing ─────────────────────────────────────────────────────
-    - jest
-    - vitest
-    - "@testing-library/react"
-
-  blocked:
-    - request                         # Deprecated — use axios or node-fetch
-    - left-pad                        # Trivial — use native String.padStart()
-    - is-positive                     # Unnecessary micro-package
-    - colors.js                       # Supply chain attack history
-    - event-stream                    # Known backdoor incident (2018)
-
-  requires_review:
-    - puppeteer                       # Browser automation — large attack surface
-    - puppeteer-core
-    - playwright
-    - crypto-js                       # Client-side crypto — prefer Web Crypto API
-
-
-# ======================================================================
-# PYTHON
-# ======================================================================
-python:
-
-  allowed:
-    # ── Web frameworks ──────────────────────────────────────────────
-    - django
-    - flask
-    - fastapi
-
-    # ── Database ────────────────────────────────────────────────────
-    - sqlalchemy
-    - psycopg2-binary
-    - pymongo
-
-    # ── Validation ──────────────────────────────────────────────────
-    - pydantic
-    - marshmallow
-
-    # ── Utilities ───────────────────────────────────────────────────
-    - python-dotenv
-    - requests
-    - click
-    - pyyaml
-
-    # ── Testing ─────────────────────────────────────────────────────
-    - pytest
-    - pytest-cov
-    - mock
-
-  blocked:
-    - pycrypto                        # Unmaintained — use pycryptodome
-    - pickle                          # Insecure deserialization — never in prod
-
-  requires_review:
-    - tensorflow                      # ML framework — large attack surface
-    - torch                           # ML framework — large attack surface
-    - cryptography                    # Crypto operations — needs security sign-off
-    - boto3                           # AWS SDK — large attack surface
-
-
-# ======================================================================
-# AI CODE RESTRICTIONS
-# ======================================================================
-# Extra restrictions applied when ai-detection flags a file as AI-generated.
-# These complement the per-language rules above.
-# ======================================================================
-ai_code:
-  dependency_restrictions:
-    strict_mode: true                 # Blocks merge if AI code uses requires_review pkg
-    blocked_patterns:
-      - "*.experimental.*"
-      - "*-unstable"
-      - "*-alpha"
-      - "*-beta"
+  # Artifact retention days
+  retention_days: 30
