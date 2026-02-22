@@ -19,11 +19,13 @@ jobs:
       pull-requests: write
 
     steps:
+      # ── Checkout product repo (the code being scanned) ────────────────────
       - name: Checkout product repo
         uses: actions/checkout@v4
         with:
           path: product
 
+      # ── Checkout guardrails repo (contains enforcer + policy) ─────────────
       - name: Checkout guardrails repo
         uses: actions/checkout@v4
         with:
@@ -39,20 +41,38 @@ jobs:
       - name: Install dependencies
         run: pip install pyyaml
 
+      # ── Pre-create results file so artifact upload never fails ────────────
+      - name: Initialise results file
+        run: |
+          echo '{"blocked":false,"violations":[]}' > allowed-deps-results.json
+
       # ── Run enforcer ──────────────────────────────────────────────────────
+      # --repo     points to the checked-out product repo
+      # --policy   points to the policy file IN THE GUARDRAILS REPO
+      #            (same pattern as ai-code-detector.py --policy flag)
       - name: Run Allowed Dependencies Enforcer
         run: |
           set +e
 
-          python guardrails/tools/security-guardrails/guardrails/dependencies/allowed-deps-enforcer.py \
-            --repo product
+          python guardrails/tools/dependencies/allowed-deps-enforcer.py \
+            --repo   product \
+            --policy guardrails/policies/allowed-dependencies.yaml
 
           ENFORCER_EXIT=$?
           echo "ENFORCER_EXIT=$ENFORCER_EXIT" >> $GITHUB_ENV
 
           exit 0
 
-      # ── Comment on PR ─────────────────────────────────────────────────────
+      # ── Upload results ────────────────────────────────────────────────────
+      - name: Upload Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allowed-deps-results
+          path: allowed-deps-results.json
+          retention-days: 30
+
+      # ── PR comment ────────────────────────────────────────────────────────
       - name: Comment on PR
         if: always() && github.event_name == 'pull_request'
         uses: actions/github-script@v7
@@ -64,7 +84,7 @@ jobs:
             if (exitCode === '0') {
               body = `## ✅ Allowed Dependencies — Clean\n\nAll dependencies are approved.`;
             } else {
-              body = `## ❌ Unapproved Dependencies Detected — Merge Blocked\n\n`;
+              body  = `## ❌ Unapproved Dependencies Detected — Merge Blocked\n\n`;
               body += `This PR introduces packages not in the approved dependency list.\n\n`;
               body += `**To get a package approved:**\n`;
               body += `1. Add it under \`requires_review\` in \`policies/allowed-dependencies.yaml\`\n`;
@@ -72,7 +92,7 @@ jobs:
               body += `3. Security team reviews within 5 business days\n`;
               body += `4. On approval it moves to \`allowed[]\`\n\n`;
               body += `**Run the enforcer locally:**\n`;
-              body += `\`\`\`bash\npython tools/security-guardrails/guardrails/dependencies/allowed-deps-enforcer.py\n\`\`\`\n\n`;
+              body += `\`\`\`bash\npip install pyyaml\npython tools/dependencies/allowed-deps-enforcer.py --repo .\n\`\`\`\n\n`;
               body += `> Policy: \`policies/allowed-dependencies.yaml\``;
             }
 
@@ -87,7 +107,7 @@ jobs:
       - name: Enforce Block Policy
         if: ${{ inputs.block-on-findings }}
         run: |
-          echo "Enforcer exit code: ${{ env.ENFORCER_EXIT }}"
+          echo "Enforcer exit: ${{ env.ENFORCER_EXIT }}"
           if [ "${{ env.ENFORCER_EXIT }}" = "1" ]; then
             echo "❌ BUILD BLOCKED: Unapproved dependencies detected."
             exit 1
