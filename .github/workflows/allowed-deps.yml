@@ -1,0 +1,95 @@
+name: Allowed Dependencies Check
+
+on:
+  workflow_call:
+    inputs:
+      block-on-findings:
+        description: "Block merge when unapproved dependencies are found"
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  allowed-deps:
+    name: Allowed Dependencies Enforcer
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout product repo
+        uses: actions/checkout@v4
+        with:
+          path: product
+
+      - name: Checkout guardrails repo
+        uses: actions/checkout@v4
+        with:
+          repository: Faslanrizni/security-guardrails-faslan
+          ref: testing
+          path: guardrails
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install pyyaml
+
+      # ── Run enforcer ──────────────────────────────────────────────────────
+      - name: Run Allowed Dependencies Enforcer
+        run: |
+          set +e
+
+          python guardrails/tools/security-guardrails/guardrails/dependencies/allowed-deps-enforcer.py \
+            --repo product
+
+          ENFORCER_EXIT=$?
+          echo "ENFORCER_EXIT=$ENFORCER_EXIT" >> $GITHUB_ENV
+
+          exit 0
+
+      # ── Comment on PR ─────────────────────────────────────────────────────
+      - name: Comment on PR
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const exitCode = process.env.ENFORCER_EXIT;
+            let body = '';
+
+            if (exitCode === '0') {
+              body = `## ✅ Allowed Dependencies — Clean\n\nAll dependencies are approved.`;
+            } else {
+              body = `## ❌ Unapproved Dependencies Detected — Merge Blocked\n\n`;
+              body += `This PR introduces packages not in the approved dependency list.\n\n`;
+              body += `**To get a package approved:**\n`;
+              body += `1. Add it under \`requires_review\` in \`policies/allowed-dependencies.yaml\`\n`;
+              body += `2. Open a PR with: package name, version, purpose, and alternatives considered\n`;
+              body += `3. Security team reviews within 5 business days\n`;
+              body += `4. On approval it moves to \`allowed[]\`\n\n`;
+              body += `**Run the enforcer locally:**\n`;
+              body += `\`\`\`bash\npython tools/security-guardrails/guardrails/dependencies/allowed-deps-enforcer.py\n\`\`\`\n\n`;
+              body += `> Policy: \`policies/allowed-dependencies.yaml\``;
+            }
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+
+      # ── Enforce block ─────────────────────────────────────────────────────
+      - name: Enforce Block Policy
+        if: ${{ inputs.block-on-findings }}
+        run: |
+          echo "Enforcer exit code: ${{ env.ENFORCER_EXIT }}"
+          if [ "${{ env.ENFORCER_EXIT }}" = "1" ]; then
+            echo "❌ BUILD BLOCKED: Unapproved dependencies detected."
+            exit 1
+          fi
+          echo "✅ All dependencies are approved."

@@ -68,3 +68,12 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
+
+  allowed-deps:
+    name: Allowed Dependencies Check
+    uses: Faslanrizni/security-guardrails-faslan/.github/workflows/allowed-deps.yml@testing
+    with:
+      block-on-findings: true
+    permissions:
+      contents: read
+      pull-requests: write

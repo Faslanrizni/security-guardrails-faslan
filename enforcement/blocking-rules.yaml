@@ -1,8 +1,9 @@
 blocking:
   - secret_detected
-  - gitleaks_finding          # gitleaks: any rule match
+  - gitleaks_finding            # gitleaks: any rule match
   - high_cve_dependency
   - critical_sast_issue
   - insecure_iac
   - unsigned_artifact
-  - ai_code_requires_review   # ai-detection: confidence ≥ 0.70
+  - ai_code_requires_review     # ai-detection: confidence ≥ 0.70
+  - unapproved_dependency       # allowed-deps-enforcer: package not in allowed[]

@@ -1,0 +1,199 @@
+# ======================================================================
+# ALLOWED DEPENDENCIES POLICY
+# ======================================================================
+# This file defines which third-party packages are approved for use.
+# It is both human-readable AND machine-enforced.
+#
+# ENFORCEMENT FLOW:
+#   1. Dependency scanner detects new/changed packages in PR
+#   2. allowed-deps-enforcer.py checks against this file
+#   3. If not listed → Build fails with approval instructions
+#   4. To add a package → follow the approval process below
+#
+# POLICY FILE : policies/allowed-dependencies.yaml
+# ENFORCER    : tools/security-guardrails/guardrails/dependencies/allowed-deps-enforcer.py
+# BLOCKING    : enforcement/blocking-rules.yaml → unapproved_dependency
+#
+# NO SLACK. NO JIRA. NO TRIBAL KNOWLEDGE.
+# ======================================================================
+
+
+# ======================================================================
+# ENFORCEMENT SETTINGS
+# ======================================================================
+enforcement:
+  block_merge: true              # CI exits 1 when unapproved package found
+  fail_on_unapproved: true       # Packages not in allowed[] are a violation
+  check_transitive: true         # Also checks lock file / indirect deps
+  strict_mode: true              # No implicit fallthrough — unlisted = blocked
+
+
+# ======================================================================
+# APPROVAL PROCESS
+# ======================================================================
+# To get a new package approved:
+#   1. Open a PR against this file with the package added under requires_review
+#   2. Include: name, version, purpose, and alternatives considered
+#   3. Security team reviews within 5 business days
+#   4. On approval, package is moved to allowed[]
+# ======================================================================
+approval_process:
+  contact: security-team
+  sla_days: 5
+  required_fields:
+    - package_name
+    - version_pinned
+    - business_justification
+    - alternatives_considered
+    - security_review_notes
+
+
+# ======================================================================
+# GO
+# ======================================================================
+go:
+
+  allowed:
+    # ── Web frameworks ──────────────────────────────────────────────
+    - github.com/gin-gonic/gin
+    - github.com/go-chi/chi
+    - github.com/labstack/echo/v4
+
+    # ── Database drivers ────────────────────────────────────────────
+    - github.com/jackc/pgx
+    - github.com/go-sql-driver/mysql
+    - github.com/lib/pq
+
+    # ── Cryptography ────────────────────────────────────────────────
+    - golang.org/x/crypto             # Standard Go crypto — preferred
+
+    # ── JWT ─────────────────────────────────────────────────────────
+    - github.com/golang-jwt/jwt       # Maintained replacement for dgrijalva
+
+    # ── Configuration / environment ─────────────────────────────────
+    - github.com/spf13/viper
+    - github.com/joho/godotenv
+
+    # ── Logging ─────────────────────────────────────────────────────
+    - github.com/sirupsen/logrus
+    - go.uber.org/zap
+
+    # ── Testing ─────────────────────────────────────────────────────
+    - github.com/stretchr/testify
+    - github.com/golang/mock
+
+    # ── Observability ───────────────────────────────────────────────
+    - go.opentelemetry.io/otel
+
+  blocked:
+    - github.com/dgrijalva/jwt-go     # Unmaintained — use github.com/golang-jwt/jwt
+    - github.com/gorilla/context      # Deprecated — use stdlib context
+    - github.com/pkg/errors           # Use native errors package (Go 1.13+)
+
+  requires_review:
+    - github.com/aws/aws-sdk-go       # Large attack surface — needs justification
+    - github.com/aws/aws-sdk-go-v2
+    - github.com/google/go-containerregistry
+    - github.com/hashicorp/vault
+
+
+# ======================================================================
+# JAVASCRIPT / NODE.JS
+# ======================================================================
+js:
+
+  allowed:
+    # ── Web frameworks ──────────────────────────────────────────────
+    - express
+    - fastify
+
+    # ── Validation ──────────────────────────────────────────────────
+    - zod
+    - joi
+    - yup
+
+    # ── HTTP clients ────────────────────────────────────────────────
+    - axios
+    - node-fetch
+
+    # ── Utilities ───────────────────────────────────────────────────
+    - lodash
+    - date-fns
+    - dotenv
+    - uuid
+
+    # ── Testing ─────────────────────────────────────────────────────
+    - jest
+    - vitest
+    - "@testing-library/react"
+
+  blocked:
+    - request                         # Deprecated — use axios or node-fetch
+    - left-pad                        # Trivial — use native String.padStart()
+    - is-positive                     # Unnecessary micro-package
+    - colors.js                       # Supply chain attack history
+    - event-stream                    # Known backdoor incident (2018)
+
+  requires_review:
+    - puppeteer                       # Browser automation — large attack surface
+    - puppeteer-core
+    - playwright
+    - crypto-js                       # Client-side crypto — prefer Web Crypto API
+
+
+# ======================================================================
+# PYTHON
+# ======================================================================
+python:
+
+  allowed:
+    # ── Web frameworks ──────────────────────────────────────────────
+    - django
+    - flask
+    - fastapi
+
+    # ── Database ────────────────────────────────────────────────────
+    - sqlalchemy
+    - psycopg2-binary
+    - pymongo
+
+    # ── Validation ──────────────────────────────────────────────────
+    - pydantic
+    - marshmallow
+
+    # ── Utilities ───────────────────────────────────────────────────
+    - python-dotenv
+    - requests
+    - click
+    - pyyaml
+
+    # ── Testing ─────────────────────────────────────────────────────
+    - pytest
+    - pytest-cov
+    - mock
+
+  blocked:
+    - pycrypto                        # Unmaintained — use pycryptodome
+    - pickle                          # Insecure deserialization — never in prod
+
+  requires_review:
+    - tensorflow                      # ML framework — large attack surface
+    - torch                           # ML framework — large attack surface
+    - cryptography                    # Crypto operations — needs security sign-off
+    - boto3                           # AWS SDK — large attack surface
+
+
+# ======================================================================
+# AI CODE RESTRICTIONS
+# ======================================================================
+# Extra restrictions applied when ai-detection flags a file as AI-generated.
+# These complement the per-language rules above.
+# ======================================================================
+ai_code:
+  dependency_restrictions:
+    strict_mode: true                 # Blocks merge if AI code uses requires_review pkg
+    blocked_patterns:
+      - "*.experimental.*"
+      - "*-unstable"
+      - "*-alpha"
+      - "*-beta"
