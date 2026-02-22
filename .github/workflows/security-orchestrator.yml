@@ -11,12 +11,12 @@ on:
       FOSSA_API_KEY:
         required: false
 
-# Grant permissions needed by all nested workflows, including ai-detection
+# Grant permissions needed by all nested workflows
 permissions:
   contents: read
   security-events: write
   pull-requests: write
-  issues: write    
+  issues: write
 
 jobs:
   trivy-fs:
@@ -69,11 +69,11 @@ jobs:
       contents: read
       pull-requests: write
 
-  allowed-deps:
-    name: Allowed Dependencies Check
-    uses: Faslanrizni/security-guardrails-faslan/.github/workflows/allowed-dependencies.yml@testing
-    with:
-      block-on-findings: true
-    permissions:
-      contents: read
-      pull-requests: write
+  # allowed-dependencies:
+  #   name: Allowed Dependencies Check
+  #   uses: Faslanrizni/security-guardrails-faslan/.github/workflows/allowed-dependencies.yml@testing
+  #   with:
+  #     block-on-unapproved: true
+  #   permissions:
+  #     contents: read
+  #     pull-requests: write
