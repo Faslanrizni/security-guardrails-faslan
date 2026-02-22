@@ -69,11 +69,11 @@ jobs:
       contents: read
       pull-requests: write
 
-  # allowed-dependencies:
-  #   name: Allowed Dependencies Check
-  #   uses: Faslanrizni/security-guardrails-faslan/.github/workflows/allowed-dependencies.yml@testing
-  #   with:
-  #     block-on-unapproved: true
-  #   permissions:
-  #     contents: read
-  #     pull-requests: write
+  allowed-dependencies:
+    name: Allowed Dependencies Check
+    uses: Faslanrizni/security-guardrails-faslan/.github/workflows/allowed-dependencies.yml@testing
+    with:
+      block-on-unapproved: true
+    permissions:
+      contents: read
+      pull-requests: write
