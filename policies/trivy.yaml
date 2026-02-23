@@ -1,0 +1,26 @@
+# Trivy configuration file
+# Policy source: policies/dependencies.yaml
+
+scan:
+  scanners:
+    - vuln
+    - secret
+    - misconfig
+
+vulnerability:
+  ignore-unfixed: true
+  severity:
+    - HIGH
+    - CRITICAL               # maps from policies/dependencies.yaml → block_on.cve_severity: HIGH
+
+report:
+  format: sarif
+  output: trivy-results.sarif
+
+timeout: 10m
+
+# License scanning — maps from policies/dependencies.yaml → disallowed_licenses
+license:
+  forbidden:
+    - GPL-3.0
+    - AGPL-3.0

@@ -48,7 +48,7 @@ jobs:
         with:
           scan-type: fs
           scan-ref: "."
-          trivy-config: tools/dependencies/trivy.yaml   # ← reads policy-driven config
+          trivy-config: policies/trivy.yaml   # ← reads policy-driven config
           exit-code: ${{ inputs.fail-on-findings && '1' || '0' }}
           format: sarif
           output: trivy-results.sarif
@@ -71,7 +71,7 @@ jobs:
         with:
           scan-type: image
           image-ref: ${{ inputs.image-ref }}
-          trivy-config: tools/dependencies/trivy.yaml   # ← reads policy-driven config
+          trivy-config: policies/trivy.yaml   # ← reads policy-driven config
           exit-code: ${{ inputs.fail-on-findings && '1' || '0' }}
           format: sarif
           output: trivy-results.sarif
@@ -83,7 +83,7 @@ jobs:
         with:
           scan-type: ${{ inputs.scan-type }}
           scan-ref: ${{ inputs.scan-type == 'image' && inputs.image-ref || '.' }}
-          trivy-config: tools/dependencies/trivy.yaml   # ← same config, table format
+          trivy-config: policies/trivy.yaml   # ← same config, table format
           exit-code: "0"                                # never fail here
           format: table
 
