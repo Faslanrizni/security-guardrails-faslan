@@ -293,7 +293,7 @@ def print_report(
     )
 
     if not violations:
-        print(f"\n  ✅  ALL {total_checked} DEPENDENCIES ARE APPROVED")
+        print(f"\n    ALL {total_checked} DEPENDENCIES ARE APPROVED")
         return False
 
     print("\n" + "═" * 66)
@@ -304,7 +304,7 @@ def print_report(
 
     # ── BLOCKED ──────────────────────────────────────────────────────
     if blocked_vs:
-        print(f"\n  🚫  BLOCKED PACKAGES  ({len(blocked_vs)})  — must be removed")
+        print(f"\n    BLOCKED PACKAGES  ({len(blocked_vs)})  — must be removed")
         print("  " + "─" * 62)
         for v in blocked_vs:
             print(f"\n    ✗  {v.name}  ({v.language})  {v.version}")
@@ -312,7 +312,7 @@ def print_report(
 
     # ── UNAPPROVED ───────────────────────────────────────────────────
     if unapproved_vs:
-        print(f"\n  ⛔  UNAPPROVED PACKAGES  ({len(unapproved_vs)})  — not in allowed list")
+        print(f"\n    UNAPPROVED PACKAGES  ({len(unapproved_vs)})  — not in allowed list")
         print("  " + "─" * 62)
         for v in unapproved_vs:
             print(f"\n    ✗  {v.name}  ({v.language})  {v.version}")
@@ -337,9 +337,9 @@ def print_report(
     # ── Result banner ─────────────────────────────────────────────────
     print("─" * 66)
     if should_block:
-        print("  Result: BUILD BLOCKED ❌")
+        print("  Result: BUILD BLOCKED ")
     else:
-        print("  Result: WARNINGS ONLY — build continues ⚠️ ")
+        print("  Result: WARNINGS ONLY — build continues  ")
     print("═" * 66 + "\n")
 
     return should_block

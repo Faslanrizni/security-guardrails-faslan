@@ -12,16 +12,11 @@
 #      is validated against the lists below
 #   5. If unapproved → build fails with instructions
 #
-# TO ADD A NEW PACKAGE:
-#   Open a PR editing this file. Get approval from the security team.
-#   No Slack. No Jira. No tribal knowledge.
+
 # ======================================================================
 
 allowed_dependencies:
 
-  # ════════════════════════════════════════════════════════════════════
-  # GO
-  # ════════════════════════════════════════════════════════════════════
   # ════════════════════════════════════════════════════════════════════
   # GO
   # ════════════════════════════════════════════════════════════════════

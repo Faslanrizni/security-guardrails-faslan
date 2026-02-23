@@ -101,7 +101,7 @@ jobs:
                 }
               }
             } catch (e) {
-              body = `## ⚠️ Dependency Check — Could not parse results\n\n${e.message}`;
+              body = `##  Dependency Check — Could not parse results\n\n${e.message}`;
             }
 
             await github.rest.issues.createComment({
@@ -116,7 +116,7 @@ jobs:
         run: |
           echo "Enforcer exit code: ${{ env.ENFORCER_EXIT }}"
           if [ "${{ env.ENFORCER_EXIT }}" = "1" ]; then
-            echo "🚫 Unapproved or blocked dependencies found — blocking merge."
+            echo " Unapproved or blocked dependencies found — blocking merge."
             exit 1
           fi
-          echo "✅ All dependencies approved."
+          echo " All dependencies approved."
