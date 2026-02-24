@@ -438,7 +438,7 @@
 
 #!/usr/bin/env python3
 """
-AI Code Detector — Enhanced
+AI Code Detector 
 Identifies AI-generated code using multiple heuristics and outputs
 structured results for CI/CD integration.
 
@@ -687,7 +687,7 @@ class AICodeDetector:
             self._log(f"Files changed: {len(files)}")
 
             if not files:
-                self._log("  ⚠ No files returned by diff — nothing to scan.", force=True)
+                self._log("  No files returned by diff — nothing to scan.", force=True)
 
             for file_path in files:
                 if not self._should_scan(file_path):
