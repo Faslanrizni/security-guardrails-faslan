@@ -89,16 +89,18 @@ jobs:
       - secrets-scan
       - allowed-dependencies
       - gosec
-    # Only run provenance if the security gates above passed
     if: ${{ !failure() && !cancelled() }}
     uses: Faslanrizni/security-guardrails-faslan/.github/workflows/supply-chain-provenance.yml@testing
     with:
-      image-ref:      ${{ inputs.image-ref }}
-      artifact-path:  ${{ inputs.artifact-path }}
+      image-ref:        ${{ inputs.image-ref }}
+      artifact-path:    ${{ inputs.artifact-path }}
       block-on-failure: true
+    # ── These must be explicitly re-declared even though they're set above ──
+    # GitHub does NOT automatically inherit orchestrator-level permissions
+    # into reusable workflow calls — each uses: block needs its own block.
     permissions:
       contents: write
       id-token: write
+      attestations: write
       packages: write
       pull-requests: write
-      attestations: write
