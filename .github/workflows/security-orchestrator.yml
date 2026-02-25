@@ -77,3 +77,28 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
+
+
+    # ── NEW: Supply Chain Provenance ──────────────────────────────────────────
+  # Must run AFTER all other scans pass. The SBOM and signature are the
+  # final "seal" on a clean build — signing a build that has known secrets
+  # or unapproved dependencies would be counterproductive.
+  supply-chain-provenance:
+    name: Supply Chain Provenance
+    needs:
+      - secrets-scan
+      - allowed-dependencies
+      - gosec
+    # Only run provenance if the security gates above passed
+    if: ${{ !failure() && !cancelled() }}
+    uses: Faslanrizni/security-guardrails-faslan/.github/workflows/supply-chain-provenance.yml@testing
+    with:
+      image-ref:      ${{ inputs.image-ref }}
+      artifact-path:  ${{ inputs.artifact-path }}
+      block-on-failure: true
+    permissions:
+      contents: write
+      id-token: write
+      packages: write
+      pull-requests: write
+      attestations: write

@@ -1,4 +1,57 @@
+# ======================================================================
+# SUPPLY CHAIN PROVENANCE POLICY
+# ======================================================================
+# Every artifact produced by this pipeline must be:
+#   - Traceable  : SBOM lists every component and its origin
+#   - Signed     : Cosign keyless signing via Sigstore (no key management)
+#   - Reproducible: SLSA provenance attestation ties artifact to build
+#
+# These three controls together shut down the following attack classes:
+#   - Dependency confusion attacks (SBOM exposes unexpected packages)
+#   - Artifact tampering (signature invalidated if artifact mutated)
+#   - Build pipeline compromise (provenance ties artifact to workflow)
+#   - Phantom package injection (unknown packages fail SBOM check)
+# ======================================================================
+
 supply_chain:
-  sbom: required
-  artifact_signing: required
-  provenance: required
+
+  # ── Required controls ──────────────────────────────────────────────────────
+  # Set to "required" to block builds that fail this control.
+  # Set to "optional" to warn but not block.
+
+  sbom: required             # Software Bill of Materials (Syft, SPDX or CycloneDX)
+  artifact_signing: required # Cosign keyless signing via Sigstore/Rekor
+  provenance: required       # SLSA L2 attestation via actions/attest-build-provenance
+
+  # ── SBOM settings ──────────────────────────────────────────────────────────
+  sbom_settings:
+    format:
+      - spdx-json            # Primary format (tooling + compliance)
+      - cyclonedx-json       # Secondary format (OWASP / Dependency-Track)
+    include_transitive: true # Include indirect dependencies
+    fail_on_empty: false     # Warn but don't fail if repo has no dependencies (e.g. early project)
+
+  # ── Signing settings ───────────────────────────────────────────────────────
+  signing_settings:
+    tool: cosign
+    method: keyless          # Uses GitHub Actions OIDC — no private key to manage or rotate
+    transparency_log: rekor  # All signatures stored in append-only public log
+    # Verification command:
+    #   cosign verify-blob <artifact> \
+    #     --signature <artifact>.sig \
+    #     --certificate <artifact>.pem \
+    #     --certificate-identity-regexp "https://github.com/<org>/<repo>" \
+    #     --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+
+  # ── Provenance settings ────────────────────────────────────────────────────
+  provenance_settings:
+    slsa_level: 2            # SLSA Level 2: hosted build + signed provenance
+    # SLSA Level 3 would require isolated, hermetic build environment (future)
+    # Verification command:
+    #   gh attestation verify <artifact> --repo <owner/repo>
+
+  # ── Artifact retention ─────────────────────────────────────────────────────
+  retention:
+    sbom_days: 90            # Keep SBOM evidence for 3 months (compliance window)
+    signature_days: 90
+    provenance_days: 90

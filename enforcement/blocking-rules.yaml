@@ -8,3 +8,8 @@ blocking:
   - ai_code_requires_review     # ai-detection: confidence ≥ 0.70
   - unapproved_dependency       # package not in allowed-dependencies.yaml
   - blocked_dependency          # package explicitly blocked in policy
+
+  # ── Supply Chain Provenance (NEW) ────────────────────────────────────────
+  - sbom_missing                # Syft failed to generate SBOM
+  - artifact_unsigned           # Cosign signing failed or not attempted
+  - provenance_unattested       # SLSA attestation step failed

@@ -1,0 +1,98 @@
+# Supply Chain Provenance
+
+Guarantees that every artifact produced by this pipeline is **traceable**, **signed**, and **reproducible** — shutting down the three most common modern supply chain attack vectors.
+
+## How it works
+
+Three controls run in sequence after all security scans pass:
+
+| Step | Tool | What it proves |
+|---|---|---|
+| **SBOM Generation** | Syft | Every component in the artifact is listed and auditable |
+| **Artifact Signing** | Cosign (keyless) | The artifact has not been tampered with since signing |
+| **SLSA Provenance** | GitHub Attestations | The artifact was built by this exact workflow from this exact commit |
+
+### Why this order matters
+
+The supply chain provenance job runs **after** secrets-scan, gosec, and allowed-dependencies. You cannot sign a build that contains leaked secrets or unapproved packages — that would certify a compromised artifact.
+
+## Attack vectors shut down
+
+| Attack | How it's blocked |
+|---|---|
+| Dependency confusion | SBOM exposes any unexpected package. Allowed-dependencies enforcer blocks unapproved packages before signing. |
+| Artifact tampering | Cosign signature is invalidated if a single byte changes post-signing. |
+| Build pipeline compromise | SLSA provenance ties the artifact to the exact workflow SHA — a rogue build can't produce a valid attestation. |
+| AI hallucinated packages | Packages AI tools invent won't be in `allowed-dependencies.yaml` and can't pass the SBOM gate. |
+| Phantom package injection | Any package appearing in the SBOM but not the allowlist fails the pipeline before signing. |
+
+## Signing: no key management
+
+Cosign keyless signing uses the **GitHub Actions OIDC token** as the signing identity. There is no private key to:
+- Rotate
+- Store securely
+- Accidentally leak
+
+The signature is tied to: `https://github.com/<org>/<repo>/.github/workflows/<workflow>.yml@refs/heads/<branch>`
+
+All signatures are recorded in the **Rekor transparency log** — a public, append-only, tamper-evident ledger.
+
+## Verifying an artifact (anyone can do this)
+
+```bash
+# Verify SBOM signature
+cosign verify-blob sbom-source.spdx.json \
+  --signature sbom-source.spdx.json.sig \
+  --certificate sbom-source.spdx.json.pem \
+  --certificate-identity-regexp "https://github.com/Faslanrizni/.*" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+
+# Verify SLSA provenance attestation
+gh attestation verify sbom-source.spdx.json \
+  --repo Faslanrizni/security-guardrails-faslan
+```
+
+## Policy
+
+Governed by `policies/supply-chain.yaml`. Three settings:
+
+```yaml
+supply_chain:
+  sbom: required             # fails build if SBOM not generated
+  artifact_signing: required # fails build if Cosign signing fails
+  provenance: required       # fails build if attestation not created
+```
+
+Change `required` → `optional` to warn without blocking.
+
+## CI permissions required
+
+The supply chain workflow needs elevated permissions not required by other guardrails:
+
+```yaml
+permissions:
+  id-token: write      # Request OIDC token for keyless signing
+  attestations: write  # Store provenance in GitHub Attestations API
+  packages: write      # Push signed images to GHCR (if image signing used)
+  contents: write      # Upload attestation artifacts
+```
+
+## Artifacts retained
+
+All supply chain evidence is uploaded as `supply-chain-evidence` and retained for **90 days** (vs 30 days for other scans) to satisfy typical compliance audit windows.
+
+Files included:
+- `sbom-source.spdx.json` — SPDX Software Bill of Materials
+- `sbom-source.cdx.json` — CycloneDX Software Bill of Materials  
+- `sbom-source.spdx.json.sig` — Cosign signature
+- `sbom-source.spdx.json.pem` — Cosign certificate (includes identity + OIDC issuer)
+- `provenance-report.json` — Machine-readable control pass/fail summary
+
+## SLSA Level
+
+This implementation achieves **SLSA Level 2**:
+- ✅ Version controlled source
+- ✅ Hosted build platform (GitHub Actions)
+- ✅ Signed provenance (GitHub Attestations)
+
+SLSA Level 3 (hermetic, isolated build) would require additional hardening of the build environment itself.
