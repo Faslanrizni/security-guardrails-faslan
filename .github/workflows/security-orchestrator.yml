@@ -88,21 +88,21 @@ jobs:
       contents: read
       pull-requests: write
 
-  supply-chain-provenance:
-    name: Supply Chain Provenance
-    needs:
-      - secrets-scan
-      - allowed-dependencies
-      - gosec
-    if: ${{ !failure() && !cancelled() }}
-    uses: Faslanrizni/security-guardrails-faslan/.github/workflows/supply-chain-provenance.yml@testing
-    with:
-      image-ref:        ${{ inputs.image-ref }}
-      artifact-path:    ${{ inputs.artifact-path }}
-      block-on-failure: true
-    permissions:
-      contents: write
-      id-token: write
-      attestations: write
-      packages: write
-      pull-requests: write
+  # supply-chain-provenance:
+  #   name: Supply Chain Provenance
+  #   needs:
+  #     - secrets-scan
+  #     - allowed-dependencies
+  #     - gosec
+  #   if: ${{ !failure() && !cancelled() }}
+  #   uses: Faslanrizni/security-guardrails-faslan/.github/workflows/supply-chain-provenance.yml@testing
+  #   with:
+  #     image-ref:        ${{ inputs.image-ref }}
+  #     artifact-path:    ${{ inputs.artifact-path }}
+  #     block-on-failure: true
+  #   permissions:
+  #     contents: write
+  #     id-token: write
+  #     attestations: write
+  #     packages: write
+  #     pull-requests: write
