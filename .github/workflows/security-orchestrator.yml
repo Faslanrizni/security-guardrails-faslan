@@ -7,16 +7,26 @@ on:
         required: false
         type: string
         default: ""
+      artifact-path:
+        required: false
+        type: string
+        default: ""
     secrets:
       FOSSA_API_KEY:
         required: false
 
-# Grant permissions needed by all nested workflows
+# ── ORCHESTRATOR PERMISSIONS ──────────────────────────────────────────────────
+# Must declare the UNION of all permissions needed by every nested job.
+# Each job below restricts further to only what it needs.
+# The caller (product repo security.yml) must grant AT LEAST these permissions.
 permissions:
-  contents: read
+  contents: write
   security-events: write
   pull-requests: write
   issues: write
+  id-token: write
+  attestations: write
+  packages: write
 
 jobs:
   trivy-fs:
@@ -78,11 +88,6 @@ jobs:
       contents: read
       pull-requests: write
 
-
-    # ── NEW: Supply Chain Provenance ──────────────────────────────────────────
-  # Must run AFTER all other scans pass. The SBOM and signature are the
-  # final "seal" on a clean build — signing a build that has known secrets
-  # or unapproved dependencies would be counterproductive.
   supply-chain-provenance:
     name: Supply Chain Provenance
     needs:
@@ -95,9 +100,6 @@ jobs:
       image-ref:        ${{ inputs.image-ref }}
       artifact-path:    ${{ inputs.artifact-path }}
       block-on-failure: true
-    # ── These must be explicitly re-declared even though they're set above ──
-    # GitHub does NOT automatically inherit orchestrator-level permissions
-    # into reusable workflow calls — each uses: block needs its own block.
     permissions:
       contents: write
       id-token: write
