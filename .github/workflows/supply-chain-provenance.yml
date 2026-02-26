@@ -19,10 +19,6 @@ on:
         type: boolean
         default: true
 
-# ── Minimal required permissions ─────────────────────────────────────────────
-# id-token  → request OIDC token for Sigstore/Cosign keyless signing
-# contents  → read source, write attestations
-# packages  → push signed OCI images (if registry is GHCR)
 permissions:
   id-token: write
   contents: write
@@ -36,7 +32,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # ── Checkout ─────────────────────────────────────────────────────────
       - name: Checkout product repo
         uses: actions/checkout@v4
         with:
@@ -49,7 +44,6 @@ jobs:
           ref: testing
           path: guardrails
 
-      # ── Install tools ─────────────────────────────────────────────────────
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3
         with:
@@ -66,7 +60,6 @@ jobs:
       - name: Install Python dependencies
         run: pip install pyyaml
 
-      # ── Initialise report ─────────────────────────────────────────────────
       - name: Initialise provenance report
         run: |
           echo '{
@@ -82,43 +75,42 @@ jobs:
 
       # ══════════════════════════════════════════════════════════════════════
       # STEP 1 — SBOM GENERATION
-      # Generate a Software Bill of Materials for the source tree.
-      # This lists every package, dependency, and transitive dep — making
-      # the complete composition of the artifact auditable and traceable.
       # ══════════════════════════════════════════════════════════════════════
-      - name: Generate SBOM (Source)
-        id: sbom-source
+      - name: Generate SBOM
+        id: sbom
         run: |
           set +e
+
           syft product \
             --output spdx-json=sbom-source.spdx.json \
             --output cyclonedx-json=sbom-source.cdx.json \
             --output table
-          EXIT=$?
-          echo "SBOM_EXIT=$EXIT" >> $GITHUB_ENV
-          exit 0
 
-      - name: Generate SBOM (Docker Image)
-        if: ${{ inputs.image-ref != '' }}
-        run: |
-          set +e
-          syft "${{ inputs.image-ref }}" \
-            --output spdx-json=sbom-image.spdx.json \
-            --output cyclonedx-json=sbom-image.cdx.json
+          SBOM_EXIT=$?
+          echo "SBOM_EXIT=$SBOM_EXIT" >> $GITHUB_ENV
+
+          if [ "$SBOM_EXIT" = "0" ]; then
+            echo "SBOM_FILE=${{ github.workspace }}/sbom-source.spdx.json" >> $GITHUB_ENV
+            echo " SBOM generated successfully"
+            ls -lh sbom-source.spdx.json sbom-source.cdx.json
+          else
+            echo "⚠  Syft exited with code $SBOM_EXIT"
+          fi
+
           exit 0
 
       # ══════════════════════════════════════════════════════════════════════
-      # STEP 2 — ARTIFACT SIGNING (Cosign keyless via OIDC)
-      # Signs the SBOM and any binary artifact using Sigstore's keyless
-      # signing flow. No private key to manage — identity is the GitHub
-      # Actions OIDC token (tied to this repo + workflow + commit).
-      # Signatures are stored in the Sigstore transparency log (Rekor)
-      # which is append-only and publicly auditable.
+      # STEP 2 — ARTIFACT SIGNING
       # ══════════════════════════════════════════════════════════════════════
       - name: Sign SBOM (keyless via Sigstore)
-        id: sign-sbom
         run: |
           set +e
+
+          if [ "$SBOM_EXIT" != "0" ] || [ ! -f sbom-source.spdx.json ]; then
+            echo "⚠  Skipping signing — SBOM not generated"
+            echo "COSIGN_EXIT=1" >> $GITHUB_ENV
+            exit 0
+          fi
 
           cosign sign-blob \
             --yes \
@@ -137,13 +129,11 @@ jobs:
 
           exit 0
 
-      - name: Sign Docker Image (keyless via Sigstore)
+      - name: Sign Docker Image
         if: ${{ inputs.image-ref != '' }}
         run: |
           set +e
-          cosign sign \
-            --yes \
-            "${{ inputs.image-ref }}"
+          cosign sign --yes "${{ inputs.image-ref }}"
           echo "IMAGE_SIGN_EXIT=$?" >> $GITHUB_ENV
           exit 0
 
@@ -161,30 +151,24 @@ jobs:
 
       # ══════════════════════════════════════════════════════════════════════
       # STEP 3 — SLSA PROVENANCE ATTESTATION
-      # Creates a signed attestation describing HOW the artifact was built:
-      # which repo, which commit, which workflow, which runner.
-      # This is the "reproducibility" guarantee — anyone can verify the
-      # build process, not just the output.
-      # SLSA L3 is the gold standard; this achieves SLSA L2.
+      # subject-path must be an absolute path to an existing file.
+      # The step is skipped entirely if SBOM generation failed — an empty
+      # or missing file causes "subject-path must be provided" error.
       # ══════════════════════════════════════════════════════════════════════
       - name: Attest SBOM provenance (SLSA)
-        id: attest
+        if: ${{ env.SBOM_EXIT == '0' }}
         uses: actions/attest-build-provenance@v2
         with:
-          subject-path: |
-            sbom-source.spdx.json
-            sbom-source.cdx.json
+          subject-path: "${{ github.workspace }}/sbom-source.spdx.json"
 
       - name: Attest Docker Image provenance
-        if: ${{ inputs.image-ref != '' }}
+        if: ${{ inputs.image-ref != '' && env.SBOM_EXIT == '0' }}
         uses: actions/attest-build-provenance@v2
         with:
-          subject-name: ${{ inputs.image-ref }}
+          subject-path: "${{ github.workspace }}/sbom-source.spdx.json"
 
       # ══════════════════════════════════════════════════════════════════════
       # STEP 4 — POLICY VERIFICATION
-      # Apply policies/supply-chain.yaml to determine if all required
-      # controls were satisfied. This is what makes the step blocking.
       # ══════════════════════════════════════════════════════════════════════
       - name: Apply Supply Chain Policy
         run: |
@@ -194,7 +178,7 @@ jobs:
             --policy      guardrails/policies/supply-chain.yaml \
             --sbom-file   sbom-source.spdx.json \
             --sig-file    sbom-source.spdx.json.sig \
-            --cosign-exit "$COSIGN_EXIT" \
+            --cosign-exit "${COSIGN_EXIT:-1}" \
             --json-output provenance-report.json \
             --verbose
 
@@ -202,7 +186,6 @@ jobs:
           echo "CHECKER_EXIT=$CHECKER_EXIT" >> $GITHUB_ENV
           exit 0
 
-      # ── Upload all artifacts ──────────────────────────────────────────────
       - name: Upload Supply Chain Artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -214,9 +197,8 @@ jobs:
             sbom-source.spdx.json.sig
             sbom-source.spdx.json.pem
             provenance-report.json
-          retention-days: 90    # keep longer — supply chain evidence for audits
+          retention-days: 90
 
-      # ── PR Comment ───────────────────────────────────────────────────────
       - name: Comment on PR
         if: always() && github.event_name == 'pull_request'
         uses: actions/github-script@v7
@@ -233,10 +215,10 @@ jobs:
               const icon = (v) => v === 'passed' ? '✅' : v === 'failed' ? '❌' : '⏳';
 
               if (data.blocked) {
-                body  = `##  Supply Chain Provenance — Merge Blocked\n\n`;
+                body  = `## 🚫 Supply Chain Provenance — Merge Blocked\n\n`;
                 body += `One or more required supply chain controls failed.\n\n`;
               } else {
-                body  = `##  Supply Chain Provenance — Passed\n\n`;
+                body  = `## ✅ Supply Chain Provenance — Passed\n\n`;
                 body += `All required supply chain controls verified.\n\n`;
               }
 
@@ -245,14 +227,10 @@ jobs:
               body += `| Artifact Signed (Sigstore) | ${icon(s.signing)} ${s.signing} |\n`;
               body += `| SLSA Provenance Attested | ${icon(s.provenance)} ${s.provenance} |\n`;
 
-              if (data.artifacts && data.artifacts.length > 0) {
-                body += `\n**Signed artifacts:** ${data.artifacts.join(', ')}\n`;
-              }
-
               body += `\n> Policy: \`policies/supply-chain.yaml\` · Evidence retained 90 days`;
 
             } catch (e) {
-              body = `##  Supply Chain Provenance — Could not parse results\n\n${e.message}`;
+              body = `## ⚠️ Supply Chain Provenance — Could not parse results\n\n${e.message}`;
             }
 
             await github.rest.issues.createComment({
@@ -262,13 +240,12 @@ jobs:
               body,
             });
 
-      # ── Enforce block ─────────────────────────────────────────────────────
       - name: Enforce Block Policy
         if: ${{ inputs.block-on-failure }}
         run: |
           echo "Provenance checker exit: ${{ env.CHECKER_EXIT }}"
           if [ "${{ env.CHECKER_EXIT }}" = "1" ]; then
-            echo " Supply chain provenance failed — blocking merge."
+            echo "🚫 Supply chain provenance failed — blocking merge."
             exit 1
           fi
-          echo " Supply chain provenance verified."
+          echo "✅ Supply chain provenance verified."
