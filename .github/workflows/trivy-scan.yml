@@ -77,15 +77,27 @@ jobs:
           output: trivy-results.sarif
 
       # ── Human-readable table summary in logs ──────────────────────────────
+      
+      # - name: Trivy – Table Summary
+      #   if: always()
+      #   uses: aquasecurity/trivy-action@0.30.0
+      #   with:
+      #     scan-type: ${{ inputs.scan-type }}
+      #     scan-ref: ${{ inputs.scan-type == 'image' && inputs.image-ref || '.' }}
+      #     trivy-config: policies/trivy.yaml   # ← same config, table format
+      #     exit-code: "0"                                # never fail here
+      #     format: table
+
       - name: Trivy – Table Summary
         if: always()
         uses: aquasecurity/trivy-action@0.30.0
         with:
-          scan-type: ${{ inputs.scan-type }}
-          scan-ref: ${{ inputs.scan-type == 'image' && inputs.image-ref || '.' }}
-          trivy-config: policies/trivy.yaml   # ← same config, table format
-          exit-code: "0"                                # never fail here
+          scan-type: fs
+          scan-ref: "."
+          trivy-config: policies/trivy.yaml
+          exit-code: "0"
           format: table
+          severity: HIGH,CRITICAL
 
       # ── Upload SARIF → GitHub Security tab ───────────────────────────────
       - name: Upload SARIF Results
