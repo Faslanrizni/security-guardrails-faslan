@@ -129,39 +129,21 @@ jobs:
 
           exit 0
 
-# ── Replace the existing "Sign Docker Image" step with these two ────────
+      - name: Log in to GHCR (for image signing)
+        if: ${{ inputs.image-ref != '' }}
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Push image to GHCR before signing
+      - name: Sign Docker Image (already in GHCR)
         if: ${{ inputs.image-ref != '' }}
         run: |
-          # Retag for GHCR and push so Cosign can attach the signature
-          REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          GHCR_REF="ghcr.io/${REPO}:${{ github.sha }}"
-
-          docker tag "${{ inputs.image-ref }}" "$GHCR_REF"
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-          docker push "$GHCR_REF"
-
-          # Get the digest so we sign by digest, not tag
-          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "$GHCR_REF" 2>/dev/null \
-                   || docker manifest inspect "$GHCR_REF" -v 2>/dev/null | python3 -c \
-                      "import sys,json; m=json.load(sys.stdin); print('ghcr.io/${REPO}@'+m['Descriptor']['digest'])" \
-                   || echo "")
-
-          if [ -n "$DIGEST" ]; then
-            echo "IMAGE_GHCR_DIGEST=$DIGEST" >> $GITHUB_ENV
-            echo " Image pushed: $GHCR_REF"
-            echo " Digest: $DIGEST"
-          else
-            echo "⚠  Could not get digest — will skip image signing"
-            echo "IMAGE_GHCR_DIGEST=" >> $GITHUB_ENV
-          fi
-
-      - name: Sign Docker Image (by digest)
-        if: ${{ inputs.image-ref != '' && env.IMAGE_GHCR_DIGEST != '' }}
-        run: |
           set +e
-          cosign sign --yes "${{ env.IMAGE_GHCR_DIGEST }}"
+          # Image was pushed to GHCR in the build job.
+          # This runner has no local Docker image — sign directly by registry ref.
+          cosign sign --yes "${{ inputs.image-ref }}"
           echo "IMAGE_SIGN_EXIT=$?" >> $GITHUB_ENV
           exit 0
 
