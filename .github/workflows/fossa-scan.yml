@@ -1,0 +1,286 @@
+name: FOSSA Scan
+
+on:
+  workflow_call:
+    inputs:
+      block-on-findings:
+        description: "Block merge when HIGH/CRITICAL license or vulnerability issues are found"
+        required: false
+        type: boolean
+        default: true
+      branch:
+        description: "Branch name to report to FOSSA"
+        required: false
+        type: string
+        default: ${{ github.ref_name }}
+      image-ref:
+        description: "Docker/OCI image to scan e.g. myapp:abc1234 or ghcr.io/org/myapp:latest (optional)"
+        required: false
+        type: string
+        default: ""
+    secrets:
+      FOSSA_API_KEY:
+        required: true
+
+jobs:
+  fossa-scan:
+    name: FOSSA - License & Dependency Scan
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout product repo
+        uses: actions/checkout@v4
+        with:
+          path: product
+          fetch-depth: 0
+
+      - name: Checkout guardrails repo
+        uses: actions/checkout@v4
+        with:
+          repository: Faslanrizni/security-guardrails-faslan
+          ref: testing
+          path: guardrails
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: pip install pyyaml requests
+
+      - name: Initialise results files
+        run: |
+          echo '{"version":"1.0.0","blocked":false,"summary":{"total":0,"critical":0,"high":0,"medium":0,"low":0},"license_findings":[],"vulnerability_findings":[]}' > fossa-scan-results.json
+          echo '{"version":"1.0.0","blocked":false,"summary":{"total":0,"critical":0,"high":0,"medium":0,"low":0},"license_findings":[],"vulnerability_findings":[]}' > fossa-container-results.json
+
+      - name: Install FOSSA CLI
+        run: |
+          curl -H 'Cache-Control: no-cache' \
+            https://raw.githubusercontent.com/fossas/fossa-cli/master/install-latest.sh \
+            | bash
+          fossa --version
+
+      # SOURCE SCAN - analyses go.mod, package.json, requirements.txt etc.
+
+      - name: FOSSA Analyze - Source
+        run: |
+          set +e
+          cd product
+          fossa analyze \
+            --fossa-api-key "$FOSSA_API_KEY" \
+            --branch "${{ inputs.branch }}" \
+            --unpack-archives \
+            --debug 2>&1 | tee ../fossa-analyze.log
+          ANALYZE_EXIT=$?
+          echo "ANALYZE_EXIT=$ANALYZE_EXIT" >> $GITHUB_ENV
+          [ "$ANALYZE_EXIT" = "0" ] && echo "FOSSA source: analysis submitted" || echo "FOSSA source: analyze error (exit $ANALYZE_EXIT)"
+          exit 0
+        env:
+          FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
+
+      - name: FOSSA Test - Source
+        run: |
+          set +e
+          cd product
+          fossa test \
+            --fossa-api-key "$FOSSA_API_KEY" \
+            --fail-on=high \
+            --json 2>&1 | tee ../fossa-test-output.json
+          TEST_EXIT=$?
+          echo "TEST_EXIT=$TEST_EXIT" >> $GITHUB_ENV
+          if   [ "$TEST_EXIT" = "0" ]; then echo "FOSSA source: no policy violations"
+          elif [ "$TEST_EXIT" = "1" ]; then echo "FOSSA source: policy violations found"
+          else                              echo "FOSSA source: test error (exit $TEST_EXIT)"
+          fi
+          exit 0
+        env:
+          FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
+
+      - name: Process Source Results and Apply Policy
+        run: |
+          set +e
+          python guardrails/tools/fossa/fossa-scanner.py \
+            --fossa-output  fossa-test-output.json \
+            --policy        guardrails/policies/fossa.yaml \
+            --json-output   fossa-scan-results.json \
+            --test-exit     "${{ env.TEST_EXIT }}" \
+            --verbose
+          SCAN_EXIT=$?
+          echo "SCAN_EXIT=$SCAN_EXIT" >> $GITHUB_ENV
+          exit 0
+
+      # CONTAINER IMAGE SCAN - skipped when image-ref is not supplied
+
+      - name: Download Docker image artifact
+        if: ${{ inputs.image-ref != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp
+
+      - name: Load Docker image
+        if: ${{ inputs.image-ref != '' }}
+        run: docker load -i /tmp/image.tar
+
+      - name: FOSSA Container Analyze
+        if: ${{ inputs.image-ref != '' }}
+        run: |
+          set +e
+          fossa container analyze \
+            "${{ inputs.image-ref }}" \
+            --fossa-api-key "$FOSSA_API_KEY" \
+            --debug 2>&1 | tee fossa-container-analyze.log
+          CONTAINER_ANALYZE_EXIT=$?
+          echo "CONTAINER_ANALYZE_EXIT=$CONTAINER_ANALYZE_EXIT" >> $GITHUB_ENV
+          [ "$CONTAINER_ANALYZE_EXIT" = "0" ] && echo "FOSSA container: analysis submitted" || echo "FOSSA container: analyze error (exit $CONTAINER_ANALYZE_EXIT)"
+          exit 0
+        env:
+          FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
+
+      - name: FOSSA Container Test
+        if: ${{ inputs.image-ref != '' }}
+        run: |
+          set +e
+          fossa container test \
+            "${{ inputs.image-ref }}" \
+            --fossa-api-key "$FOSSA_API_KEY" \
+            --fail-on=high \
+            --json 2>&1 | tee fossa-container-test-output.json
+          CONTAINER_TEST_EXIT=$?
+          echo "CONTAINER_TEST_EXIT=$CONTAINER_TEST_EXIT" >> $GITHUB_ENV
+          if   [ "$CONTAINER_TEST_EXIT" = "0" ]; then echo "FOSSA container: no policy violations"
+          elif [ "$CONTAINER_TEST_EXIT" = "1" ]; then echo "FOSSA container: policy violations found"
+          else                                        echo "FOSSA container: test error (exit $CONTAINER_TEST_EXIT)"
+          fi
+          exit 0
+        env:
+          FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
+
+      - name: Process Container Results and Apply Policy
+        if: ${{ inputs.image-ref != '' }}
+        run: |
+          set +e
+          python guardrails/tools/fossa/fossa-scanner.py \
+            --fossa-output  fossa-container-test-output.json \
+            --policy        guardrails/policies/fossa.yaml \
+            --json-output   fossa-container-results.json \
+            --test-exit     "${{ env.CONTAINER_TEST_EXIT }}" \
+            --scan-target   "container" \
+            --verbose
+          CONTAINER_SCAN_EXIT=$?
+          echo "CONTAINER_SCAN_EXIT=$CONTAINER_SCAN_EXIT" >> $GITHUB_ENV
+          exit 0
+
+      - name: Upload Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fossa-scan-results
+          path: |
+            fossa-scan-results.json
+            fossa-test-output.json
+            fossa-analyze.log
+            fossa-container-results.json
+            fossa-container-test-output.json
+            fossa-container-analyze.log
+          retention-days: 30
+
+      - name: Comment on PR
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            function readResults(file) {
+              try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
+              catch (e) { return null; }
+            }
+
+            function renderSection(data, label) {
+              if (!data) return '## FOSSA ' + label + ' - Could not parse results\n\n';
+              const s = data.summary || {};
+              const p = data.policy  || {};
+              let body = '';
+
+              if (data.blocked) {
+                body  = '## 🚫 FOSSA ' + label + ' - Merge Blocked\n\n';
+                body += '**' + (s.total||0) + '** issue(s): ';
+                body += (s.critical||0) + ' critical · ' + (s.high||0) + ' high · ' + (s.medium||0) + ' medium · ' + (s.low||0) + ' low\n\n';
+                body += '> Resolve all HIGH/CRITICAL issues before this PR can be merged.\n\n';
+              } else if ((s.total || 0) > 0) {
+                body  = '## ⚠️ FOSSA ' + label + ' - Warnings\n\n';
+                body += '**' + s.total + '** finding(s) flagged for review (build not blocked).\n\n';
+              } else {
+                body = '## ✅ FOSSA ' + label + ' - Clean\n\nNo license or vulnerability issues detected.\n\n';
+              }
+
+              if (p.block_on_severity) body += '> Block policy: `' + p.block_on_severity.join(', ') + '`\n\n';
+
+              if (data.license_findings && data.license_findings.length > 0) {
+                body += '**License Issues (' + data.license_findings.length + '):**\n';
+                for (const f of data.license_findings.slice(0, 6)) {
+                  const icon = f.severity==='CRITICAL'?'🔴':f.severity==='HIGH'?'🟠':f.severity==='MEDIUM'?'🟡':'⚪';
+                  body += '\n' + icon + ' `' + f.dependency + '` — `' + f.license + '` (' + f.severity + ')';
+                  if (f.reason) body += '\n  > ' + f.reason;
+                }
+                if (data.license_findings.length > 6) body += '\n\n_...and ' + (data.license_findings.length-6) + ' more._';
+              }
+
+              if (data.vulnerability_findings && data.vulnerability_findings.length > 0) {
+                body += '\n\n**Vulnerability Issues (' + data.vulnerability_findings.length + '):**\n';
+                for (const f of data.vulnerability_findings.slice(0, 6)) {
+                  const icon = f.severity==='CRITICAL'?'🔴':f.severity==='HIGH'?'🟠':f.severity==='MEDIUM'?'🟡':'⚪';
+                  body += '\n' + icon + ' `' + f.dependency + '` — `' + (f.cve||f.vuln_id) + '` (' + f.severity + ')';
+                  if (f.fixed_in) body += ' · fix: `' + f.fixed_in + '`';
+                }
+                if (data.vulnerability_findings.length > 6) body += '\n\n_...and ' + (data.vulnerability_findings.length-6) + ' more._';
+              }
+
+              return body + '\n';
+            }
+
+            const imageRef      = '${{ inputs.image-ref }}';
+            const sourceData    = readResults('fossa-scan-results.json');
+            const containerData = readResults('fossa-container-results.json');
+
+            let body = renderSection(sourceData, 'Source Scan');
+            if (imageRef) {
+              body += '---\n\n';
+              body += renderSection(containerData, 'Container Scan (`' + imageRef + '`)');
+            }
+
+            await github.rest.issues.createComment({
+              owner:        context.repo.owner,
+              repo:         context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+
+      - name: Enforce Block Policy
+        if: ${{ inputs.block-on-findings }}
+        run: |
+          echo "Source    - analyze: ${{ env.ANALYZE_EXIT }}  test: ${{ env.TEST_EXIT }}  policy: ${{ env.SCAN_EXIT }}"
+          echo "Container - analyze: ${{ env.CONTAINER_ANALYZE_EXIT }}  test: ${{ env.CONTAINER_TEST_EXIT }}  policy: ${{ env.CONTAINER_SCAN_EXIT }}"
+
+          BLOCKED=0
+
+          if [ "${{ env.SCAN_EXIT }}" = "1" ]; then
+            echo "Source scan blocked - findings exceed severity threshold."
+            BLOCKED=1
+          fi
+
+          if [ "${{ env.CONTAINER_SCAN_EXIT }}" = "1" ]; then
+            echo "Container scan blocked - findings exceed severity threshold."
+            BLOCKED=1
+          fi
+
+          [ "$BLOCKED" = "1" ] && exit 1
+
+          echo "No blocking FOSSA findings."

@@ -70,6 +70,21 @@ jobs:
       pull-requests: write
       issues: write
 
+  fossa-scan:
+    name: FOSSA – License & Dependency Scan
+    # Only runs when a FOSSA_API_KEY secret is available
+    if: ${{ secrets.FOSSA_API_KEY != '' }}
+    uses: Faslanrizni/security-guardrails-faslan/.github/workflows/fossa-scan.yml@testing
+    with:
+      block-on-findings: true
+      image-ref: ${{ inputs.image-ref }}   # pass image through for container scan
+    secrets:
+      FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+
   ai-detection:
     name: AI Code Detection
     uses: Faslanrizni/security-guardrails-faslan/.github/workflows/ai-detection.yml@testing

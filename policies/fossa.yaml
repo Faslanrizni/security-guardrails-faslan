@@ -1,0 +1,123 @@
+# ======================================================================
+# FOSSA LICENSE & VULNERABILITY SCAN POLICY
+# ======================================================================
+# FOSSA performs two distinct checks on every dependency:
+#   1. License compliance  — flags dependencies with disallowed licenses
+#   2. Vulnerability scan  — flags dependencies with known CVEs
+#
+# This file is the SINGLE SOURCE OF TRUTH for FOSSA enforcement.
+# It is both human-readable AND machine-enforced by CI guardrails.
+#
+# ENFORCEMENT FLOW:
+#   1. PR is opened / pushed
+#   2. CI installs FOSSA CLI and runs `fossa analyze`
+#   3. FOSSA SaaS analyses the dependency graph
+#   4. `fossa test` retrieves results and applies FOSSA policies
+#   5. fossa-scanner.py reads results, maps severity, checks this file
+#   6. If violations exceed block_on_severity → build fails
+# ======================================================================
+
+fossa:
+
+  # ── Scan toggle ─────────────────────────────────────────────────────────────
+  scan:
+    enabled: true
+    analyze_on_push: true          # run fossa analyze on every push
+    test_on_pr: true               # run fossa test and enforce policy on PRs
+
+  # ── Severities that cause CI to block ───────────────────────────────────────
+  # CRITICAL and HIGH block by default.
+  # Set to [CRITICAL] to only block on the most severe issues.
+  block_on_severity:
+    - CRITICAL
+    - HIGH
+
+  # ── License policy ──────────────────────────────────────────────────────────
+  licenses:
+
+    # Licenses that are explicitly allowed — any dependency using ONLY these
+    # licenses will pass without review.
+    allowed:
+      - MIT
+      - Apache-2.0
+      - BSD-2-Clause
+      - BSD-3-Clause
+      - ISC
+      - 0BSD
+      - Unlicense
+      - CC0-1.0
+      - MPL-2.0           # Mozilla Public License — file-level copyleft only
+
+    # Licenses that are explicitly blocked — any dependency using one of these
+    # will fail the build regardless of other settings.
+    # Severity: CRITICAL
+    blocked:
+      - license: GPL-2.0
+        reason:  "Strong copyleft — incompatible with proprietary software"
+      - license: GPL-3.0
+        reason:  "Strong copyleft — incompatible with proprietary software"
+      - license: AGPL-3.0
+        reason:  "Network copyleft — affects SaaS deployments"
+      - license: SSPL-1.0
+        reason:  "Server-side copyleft — use is highly restricted"
+      - license: BUSL-1.1
+        reason:  "Business Source License — commercial use restrictions"
+      - license: Commons-Clause
+        reason:  "Restricts commercial use and redistribution"
+
+    # Licenses that require a manual security/legal review before use.
+    # Build is warned (not blocked) unless block_on_requires_review: true.
+    requires_review:
+      - license: LGPL-2.1
+        reason:  "Weak copyleft — linking restrictions may apply"
+      - license: LGPL-3.0
+        reason:  "Weak copyleft — linking restrictions may apply"
+      - license: CC-BY-SA-4.0
+        reason:  "ShareAlike clause — review before using in distributed products"
+      - license: EPL-2.0
+        reason:  "Eclipse Public License — weak copyleft, review required"
+
+    # Block build when requires_review licenses are found (default: false = warn only)
+    block_on_requires_review: false
+
+    # FOSSA-specific: whether to fail on unknown/unrecognised licenses
+    fail_on_unknown_license: false
+
+  # ── Vulnerability policy ────────────────────────────────────────────────────
+  vulnerabilities:
+
+    # Minimum CVSS score to report (0.0 – 10.0)
+    # Findings below this score are silently ignored.
+    min_cvss_score: 4.0
+
+    # Fail on vulnerabilities at or above this CVSS score
+    # Maps to FOSSA --fail-on flag and block_on_severity above
+    fail_on_cvss_score: 7.0
+
+    # Ignore vulnerabilities with no available fix
+    ignore_unfixable: false
+
+    # Max age (days) of a CVE entry before it is treated as stale/informational
+    # Set to 0 to disable staleness check
+    max_cve_age_days: 0
+
+  # ── FOSSA CLI settings ──────────────────────────────────────────────────────
+  cli:
+    # Whether to unpack archives (e.g. vendored tarballs) during analysis
+    unpack_archives: true
+
+    # FOSSA project name override (defaults to repo name if empty)
+    project_name: ""
+
+    # FOSSA team slug to associate results with (optional)
+    team: ""
+
+    # Additional FOSSA CLI flags to pass to `fossa analyze`
+    extra_analyze_flags: []
+
+  # ── Reporting ────────────────────────────────────────────────────────────────
+  reporting:
+    pr_comment: true               # post findings as a PR comment
+    artifact_name: fossa-scan-results
+    retention_days: 30
+    json_output: true              # write structured JSON results file
