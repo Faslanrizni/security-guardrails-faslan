@@ -11,14 +11,19 @@ on:
         required: false
         type: string
         default: ""
+      # FIX: Added explicit boolean to gate the FOSSA job.
+      # Secrets cannot be referenced in `if:` conditions — they are always
+      # empty in that context, causing the job to be permanently skipped.
+      # Callers pass `enable-fossa: true` when they have a FOSSA_API_KEY.
+      enable-fossa:
+        required: false
+        type: boolean
+        default: false
     secrets:
       FOSSA_API_KEY:
         required: false
 
 # ── ORCHESTRATOR PERMISSIONS ──────────────────────────────────────────────────
-# Must declare the UNION of all permissions needed by every nested job.
-# Each job below restricts further to only what it needs.
-# The caller (product repo security.yml) must grant AT LEAST these permissions.
 permissions:
   contents: write
   security-events: write
@@ -72,14 +77,16 @@ jobs:
 
   fossa-scan:
     name: FOSSA – License & Dependency Scan
-    # Only runs when a FOSSA_API_KEY secret is available
-    if: ${{ inputs.FOSSA_API_KEY != '' }}
+    # FIX: Use the boolean input instead of trying to read the secret value.
+    # secrets are not accessible in `if:` expressions — they always evaluate
+    # to empty string, permanently skipping this job.
+    if: ${{ inputs.enable-fossa == true }}
     uses: Faslanrizni/security-guardrails-faslan/.github/workflows/fossa-scan.yml@testing
     with:
       block-on-findings: true
-      image-ref: ${{ inputs.image-ref }}   # pass image through for container scan
+      image-ref: ${{ inputs.image-ref }}
     secrets:
-      FOSSA_API_KEY: ${{ inputs.FOSSA_API_KEY }}
+      FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
     permissions:
       contents: read
       pull-requests: write
