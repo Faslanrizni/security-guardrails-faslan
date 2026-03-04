@@ -66,7 +66,21 @@ jobs:
             | bash
           fossa --version
 
-      # SOURCE SCAN - analyses go.mod, package.json, requirements.txt etc.
+      # ── Derive a stable project slug from the repo name ───────────────────
+      # Uses the product repo's name as the FOSSA project name so that
+      # `fossa analyze` and `fossa test` always reference the same project.
+      - name: Set FOSSA project name
+        run: |
+          # e.g. "owner/my-app" → "my-app"
+          FOSSA_PROJECT="security-guardrails-poc"
+          #FOSSA_PROJECT="${{ github.event.repository.name }}"
+          echo "FOSSA_PROJECT=${FOSSA_PROJECT}" >> $GITHUB_ENV
+          echo "FOSSA_REVISION=${{ github.sha }}"  >> $GITHUB_ENV
+
+      # ── SOURCE SCAN ───────────────────────────────────────────────────────
+      # FIX: Added --project and --revision so fossa analyze and fossa test
+      # reference the SAME project+revision. Without these flags FOSSA may
+      # create a different project per run and `fossa test` finds nothing.
 
       - name: FOSSA Analyze - Source
         run: |
@@ -74,7 +88,9 @@ jobs:
           cd product
           fossa analyze \
             --fossa-api-key "$FOSSA_API_KEY" \
-            --branch "${{ inputs.branch }}" \
+            --branch        "${{ inputs.branch }}" \
+            --project       "$FOSSA_PROJECT" \
+            --revision      "$FOSSA_REVISION" \
             --unpack-archives \
             --debug 2>&1 | tee ../fossa-analyze.log
           ANALYZE_EXIT=$?
@@ -88,8 +104,15 @@ jobs:
         run: |
           set +e
           cd product
+          # FIX: --project and --revision must match the analyze step exactly.
+          # FIX: Removed --json flag from fossa test — it suppresses human-readable
+          #      output and the JSON it produces is written to stdout (mixed with
+          #      log lines), making it unreliable to parse. We capture stdout to a
+          #      file directly instead.
           fossa test \
             --fossa-api-key "$FOSSA_API_KEY" \
+            --project       "$FOSSA_PROJECT" \
+            --revision      "$FOSSA_REVISION" \
             --fail-on=high \
             --json 2>&1 | tee ../fossa-test-output.json
           TEST_EXIT=$?
@@ -115,7 +138,8 @@ jobs:
           echo "SCAN_EXIT=$SCAN_EXIT" >> $GITHUB_ENV
           exit 0
 
-      # CONTAINER IMAGE SCAN - skipped when image-ref is not supplied
+      # ── CONTAINER IMAGE SCAN ──────────────────────────────────────────────
+      # Skipped when image-ref is not supplied
 
       - name: Download Docker image artifact
         if: ${{ inputs.image-ref != '' }}
@@ -132,9 +156,12 @@ jobs:
         if: ${{ inputs.image-ref != '' }}
         run: |
           set +e
+          # FIX: Added --project and --revision to container analyze
           fossa container analyze \
             "${{ inputs.image-ref }}" \
             --fossa-api-key "$FOSSA_API_KEY" \
+            --project       "${FOSSA_PROJECT}-container" \
+            --revision      "$FOSSA_REVISION" \
             --debug 2>&1 | tee fossa-container-analyze.log
           CONTAINER_ANALYZE_EXIT=$?
           echo "CONTAINER_ANALYZE_EXIT=$CONTAINER_ANALYZE_EXIT" >> $GITHUB_ENV
@@ -147,9 +174,12 @@ jobs:
         if: ${{ inputs.image-ref != '' }}
         run: |
           set +e
+          # FIX: Added --project and --revision to match container analyze step
           fossa container test \
             "${{ inputs.image-ref }}" \
             --fossa-api-key "$FOSSA_API_KEY" \
+            --project       "${FOSSA_PROJECT}-container" \
+            --revision      "$FOSSA_REVISION" \
             --fail-on=high \
             --json 2>&1 | tee fossa-container-test-output.json
           CONTAINER_TEST_EXIT=$?
