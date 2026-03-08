@@ -11,11 +11,7 @@ vulnerability:
   ignore-unfixed: true
   severity:
     - HIGH
-    - CRITICAL               # maps from policies/dependencies.yaml → block_on.cve_severity: HIGH
-
-report:
-  format: sarif
-  output: trivy-results.sarif
+    - CRITICAL
 
 timeout: 10m
 
