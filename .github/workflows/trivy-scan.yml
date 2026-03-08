@@ -27,7 +27,9 @@ jobs:
     permissions:
       contents: read
       security-events: write
-      packages: read
+      # packages: read is intentionally omitted here —
+      # it must be granted by the calling workflow (security-orchestrator.yml)
+      # Reusable workflows cannot exceed the permissions of their caller.
 
     steps:
       - name: Checkout

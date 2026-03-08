@@ -11,10 +11,6 @@ on:
         required: false
         type: string
         default: ""
-      # FIX: Added explicit boolean to gate the FOSSA job.
-      # Secrets cannot be referenced in `if:` conditions — they are always
-      # empty in that context, causing the job to be permanently skipped.
-      # Callers pass `enable-fossa: true` when they have a FOSSA_API_KEY.
       enable-fossa:
         required: false
         type: boolean
@@ -36,13 +32,14 @@ permissions:
 jobs:
   # trivy-fs:
   #   name: Trivy – Filesystem Scan
-  #   uses: Faslanrizni/security-guardrails-faslan/.github/workflows/trivy-scan.yml@main
+  #   uses: Faslanrizni/security-guardrails-faslan/.github/workflows/trivy-scan.yml@testing
   #   with:
   #     scan-type: fs
   #     fail-on-findings: true
   #   permissions:
   #     contents: read
   #     security-events: write
+  #     packages: read          # required for GHCR login in reusable workflow
 
   trivy-image:
     name: Trivy – Docker Image Scan
@@ -55,6 +52,7 @@ jobs:
     permissions:
       contents: read
       security-events: write
+      packages: read          # required to pull image from GHCR
 
   gosec:
     name: Gosec – SAST Scan
@@ -77,9 +75,6 @@ jobs:
 
   fossa-scan:
     name: FOSSA – License & Dependency Scan
-    # FIX: Use the boolean input instead of trying to read the secret value.
-    # secrets are not accessible in `if:` expressions — they always evaluate
-    # to empty string, permanently skipping this job.
     if: ${{ inputs.enable-fossa == true }}
     uses: Faslanrizni/security-guardrails-faslan/.github/workflows/fossa-scan.yml@testing
     with:
