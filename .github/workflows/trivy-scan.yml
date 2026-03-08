@@ -18,8 +18,6 @@ on:
         required: false
         type: boolean
         default: true
-      # NOTE: severity and scanners are now driven by tools/dependencies/trivy.yaml
-      # No need to pass them as inputs anymore
 
 jobs:
   trivy:
@@ -35,29 +33,29 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # ── Install Trivy manually (avoids aquasecurity/setup-trivy binary download failures) ──
+      - name: Install Trivy
+        run: |
+          TRIVY_VERSION="0.58.1"
+          wget -q "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.deb" \
+            -O /tmp/trivy.deb
+          sudo dpkg -i /tmp/trivy.deb
+          trivy --version
+
+      # ── Trivy DB cache ────────────────────────────────────────────────────
       - name: Cache Trivy DB
+        id: cache-trivy-db
         uses: actions/cache@v4
         with:
           path: ~/.cache/trivy
           key: trivy-db-${{ runner.os }}-${{ github.run_id }}
           restore-keys: trivy-db-${{ runner.os }}-
 
-      # ── Filesystem scan ───────────────────────────────────────────────────
-      - name: Trivy – Filesystem Scan
-        if: ${{ inputs.scan-type == 'fs' }}
-        uses: aquasecurity/trivy-action@0.30.0
-        with:
-          scan-type: fs
-          scan-ref: "."
-          trivy-config: policies/trivy.yaml   # ← reads policy-driven config
-          exit-code: ${{ inputs.fail-on-findings && '1' || '0' }}
-          format: sarif
-          output: trivy-results.sarif
+      - name: Update Trivy DB
+        if: steps.cache-trivy-db.outputs.cache-hit != 'true'
+        run: trivy image --download-db-only --no-progress
 
-      # ── Image scan ────────────────────────────────────────────────────────
-      # Image is pulled directly from GHCR — no tar artifact needed.
-      # The build job pushes to GHCR before this workflow runs.
-
+      # ── Log in to GHCR (image scan only) ─────────────────────────────────
       - name: Log in to GHCR
         if: ${{ inputs.scan-type == 'image' && inputs.image-ref != '' }}
         uses: docker/login-action@v3
@@ -66,28 +64,65 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Trivy – Image Scan
-        if: ${{ inputs.scan-type == 'image' && inputs.image-ref != '' }}
-        uses: aquasecurity/trivy-action@0.30.0
-        with:
-          scan-type: image
-          image-ref: ${{ inputs.image-ref }}
-          trivy-config: policies/trivy.yaml   # ← reads policy-driven config
-          exit-code: ${{ inputs.fail-on-findings && '1' || '0' }}
-          format: sarif
-          output: trivy-results.sarif
+      # ── Filesystem scan ───────────────────────────────────────────────────
+      - name: Trivy – Filesystem Scan (SARIF)
+        if: ${{ inputs.scan-type == 'fs' }}
+        run: |
+          EXIT_CODE=${{ inputs.fail-on-findings && '1' || '0' }}
+          set +e
+          trivy fs . \
+            --config    policies/trivy.yaml \
+            --format    sarif \
+            --output    trivy-results.sarif \
+            --exit-code $EXIT_CODE
+          SCAN_EXIT=$?
+          echo "SCAN_EXIT=$SCAN_EXIT" >> $GITHUB_ENV
+          exit 0
 
-      # ── Human-readable table summary in logs ──────────────────────────────
-      - name: Trivy – Table Summary
+      - name: Trivy – Filesystem Scan (Table summary)
+        if: ${{ inputs.scan-type == 'fs' }}
+        run: |
+          trivy fs . \
+            --config    policies/trivy.yaml \
+            --format    table \
+            --exit-code 0 \
+            --severity  HIGH,CRITICAL || true
+
+      # ── Image scan ────────────────────────────────────────────────────────
+      - name: Trivy – Image Scan (SARIF)
+        if: ${{ inputs.scan-type == 'image' && inputs.image-ref != '' }}
+        run: |
+          EXIT_CODE=${{ inputs.fail-on-findings && '1' || '0' }}
+          set +e
+          trivy image \
+            --config    policies/trivy.yaml \
+            --format    sarif \
+            --output    trivy-results.sarif \
+            --exit-code $EXIT_CODE \
+            "${{ inputs.image-ref }}"
+          SCAN_EXIT=$?
+          echo "SCAN_EXIT=$SCAN_EXIT" >> $GITHUB_ENV
+          exit 0
+
+      - name: Trivy – Image Scan (Table summary)
+        if: ${{ inputs.scan-type == 'image' && inputs.image-ref != '' }}
+        run: |
+          trivy image \
+            --config    policies/trivy.yaml \
+            --format    table \
+            --exit-code 0 \
+            --severity  HIGH,CRITICAL \
+            "${{ inputs.image-ref }}" || true
+
+      # ── Ensure SARIF exists before upload ─────────────────────────────────
+      # Prevents codeql upload-sarif from failing if no scan ran
+      - name: Ensure SARIF file exists
         if: always()
-        uses: aquasecurity/trivy-action@0.30.0
-        with:
-          scan-type: ${{ inputs.scan-type == 'image' && inputs.image-ref != '' && 'image' || 'fs' }}
-          scan-ref: ${{ inputs.scan-type == 'image' && inputs.image-ref != '' && inputs.image-ref || '.' }}
-          trivy-config: policies/trivy.yaml
-          exit-code: "0"                      # never fail on summary step
-          format: table
-          severity: HIGH,CRITICAL
+        run: |
+          if [ ! -f trivy-results.sarif ]; then
+            echo '{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"Trivy","rules":[]}},"results":[]}]}' \
+              > trivy-results.sarif
+          fi
 
       # ── Upload SARIF → GitHub Security tab ───────────────────────────────
       - name: Upload SARIF Results
@@ -96,3 +131,10 @@ jobs:
         with:
           sarif_file: trivy-results.sarif
           category: trivy
+
+      # ── Enforce fail gate ─────────────────────────────────────────────────
+      - name: Fail on findings
+        if: ${{ inputs.fail-on-findings && env.SCAN_EXIT == '1' }}
+        run: |
+          echo "Trivy found HIGH/CRITICAL vulnerabilities — failing pipeline."
+          exit 1
