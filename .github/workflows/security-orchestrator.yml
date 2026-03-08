@@ -47,7 +47,7 @@ jobs:
   trivy-image:
     name: Trivy – Docker Image Scan
     if: ${{ inputs.image-ref != '' }}
-    uses: Faslanrizni/security-guardrails-faslan/.github/workflows/trivy-scan.yml@main
+    uses: Faslanrizni/security-guardrails-faslan/.github/workflows/trivy-scan.yml@testing
     with:
       scan-type: image
       image-ref: ${{ inputs.image-ref }}
