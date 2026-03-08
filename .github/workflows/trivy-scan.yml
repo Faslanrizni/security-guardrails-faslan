@@ -9,7 +9,7 @@ on:
         type: string
         default: fs
       image-ref:
-        description: "Docker image to scan e.g. myapp:abc1234"
+        description: "Docker image to scan e.g. ghcr.io/org/myapp:abc1234"
         required: false
         type: string
         default: ""
@@ -29,6 +29,7 @@ jobs:
     permissions:
       contents: read
       security-events: write
+      packages: read        # needed to pull images from GHCR
 
     steps:
       - name: Checkout
@@ -54,16 +55,16 @@ jobs:
           output: trivy-results.sarif
 
       # ── Image scan ────────────────────────────────────────────────────────
-      - name: Download Docker image artifact
-        if: ${{ inputs.scan-type == 'image' && inputs.image-ref != '' }}
-        uses: actions/download-artifact@v4
-        with:
-          name: docker-image
-          path: /tmp
+      # Image is pulled directly from GHCR — no tar artifact needed.
+      # The build job pushes to GHCR before this workflow runs.
 
-      - name: Load Docker image
+      - name: Log in to GHCR
         if: ${{ inputs.scan-type == 'image' && inputs.image-ref != '' }}
-        run: docker load -i /tmp/image.tar
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Trivy – Image Scan
         if: ${{ inputs.scan-type == 'image' && inputs.image-ref != '' }}
@@ -77,25 +78,14 @@ jobs:
           output: trivy-results.sarif
 
       # ── Human-readable table summary in logs ──────────────────────────────
-      
-      # - name: Trivy – Table Summary
-      #   if: always()
-      #   uses: aquasecurity/trivy-action@0.30.0
-      #   with:
-      #     scan-type: ${{ inputs.scan-type }}
-      #     scan-ref: ${{ inputs.scan-type == 'image' && inputs.image-ref || '.' }}
-      #     trivy-config: policies/trivy.yaml   # ← same config, table format
-      #     exit-code: "0"                                # never fail here
-      #     format: table
-
       - name: Trivy – Table Summary
         if: always()
         uses: aquasecurity/trivy-action@0.30.0
         with:
-          scan-type: fs
-          scan-ref: "."
+          scan-type: ${{ inputs.scan-type == 'image' && inputs.image-ref != '' && 'image' || 'fs' }}
+          scan-ref: ${{ inputs.scan-type == 'image' && inputs.image-ref != '' && inputs.image-ref || '.' }}
           trivy-config: policies/trivy.yaml
-          exit-code: "0"
+          exit-code: "0"                      # never fail on summary step
           format: table
           severity: HIGH,CRITICAL
 
