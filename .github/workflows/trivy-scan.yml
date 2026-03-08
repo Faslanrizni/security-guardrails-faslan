@@ -30,12 +30,22 @@ jobs:
       # packages: read is granted by the calling workflow (security-orchestrator.yml)
 
     steps:
-      - name: Checkout
+      # ── Checkout product repo (what we scan for fs, and for workspace) ────
+      - name: Checkout product repo
         uses: actions/checkout@v4
+        with:
+          path: product
+
+      # ── Checkout guardrails repo to get policies/trivy.yaml ───────────────
+      # All other scan workflows (secrets, fossa, etc.) do this same pattern.
+      - name: Checkout guardrails repo
+        uses: actions/checkout@v4
+        with:
+          repository: Faslanrizni/security-guardrails-faslan
+          ref: testing
+          path: guardrails
 
       # ── Install Trivy via official apt repository ─────────────────────────
-      # Uses standard Ubuntu apt infrastructure — no direct GitHub release
-      # download needed, so works even when GitHub release CDN is rate-limited.
       - name: Install Trivy
         run: |
           sudo apt-get install -y wget apt-transport-https gnupg lsb-release
@@ -77,8 +87,8 @@ jobs:
         if: ${{ inputs.scan-type == 'fs' }}
         run: |
           set +e
-          trivy fs . \
-            --config    policies/trivy.yaml \
+          trivy fs product \
+            --config    guardrails/policies/trivy.yaml \
             --format    sarif \
             --output    trivy-results.sarif \
             --exit-code ${{ inputs.fail-on-findings && '1' || '0' }}
@@ -88,8 +98,8 @@ jobs:
       - name: Trivy – Filesystem Scan (Table)
         if: ${{ inputs.scan-type == 'fs' }}
         run: |
-          trivy fs . \
-            --config    policies/trivy.yaml \
+          trivy fs product \
+            --config    guardrails/policies/trivy.yaml \
             --format    table \
             --exit-code 0 \
             --severity  HIGH,CRITICAL || true
@@ -100,7 +110,7 @@ jobs:
         run: |
           set +e
           trivy image \
-            --config    policies/trivy.yaml \
+            --config    guardrails/policies/trivy.yaml \
             --format    sarif \
             --output    trivy-results.sarif \
             --exit-code ${{ inputs.fail-on-findings && '1' || '0' }} \
@@ -112,7 +122,7 @@ jobs:
         if: ${{ inputs.scan-type == 'image' && inputs.image-ref != '' }}
         run: |
           trivy image \
-            --config    policies/trivy.yaml \
+            --config    guardrails/policies/trivy.yaml \
             --format    table \
             --exit-code 0 \
             --severity  HIGH,CRITICAL \
