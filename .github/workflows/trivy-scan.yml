@@ -27,22 +27,27 @@ jobs:
     permissions:
       contents: read
       security-events: write
-      # packages: read is intentionally omitted here —
-      # it must be granted by the calling workflow (security-orchestrator.yml)
-      # Reusable workflows cannot exceed the permissions of their caller.
+      # packages: read is granted by the calling workflow (security-orchestrator.yml)
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ── Install Trivy directly via .deb — bypasses aquasecurity/setup-trivy ──
+      # ── Install Trivy via official apt repository ─────────────────────────
+      # Uses standard Ubuntu apt infrastructure — no direct GitHub release
+      # download needed, so works even when GitHub release CDN is rate-limited.
       - name: Install Trivy
         run: |
-          TRIVY_VERSION="0.58.1"
-          wget -q \
-            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.deb" \
-            -O /tmp/trivy.deb
-          sudo dpkg -i /tmp/trivy.deb
+          sudo apt-get install -y wget apt-transport-https gnupg lsb-release
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key \
+            | gpg --dearmor \
+            | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+          echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] \
+            https://aquasecurity.github.io/trivy-repo/deb \
+            $(lsb_release -sc) main" \
+            | sudo tee /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update -qq
+          sudo apt-get install -y trivy
           trivy --version
 
       # ── Cache Trivy vulnerability DB ──────────────────────────────────────
